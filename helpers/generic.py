@@ -127,7 +127,7 @@ def generator_queue(generator, max_q_size=10, wait_time=0.05, nb_worker=1):
 def random_generator(data_dict, input_keys, output_keys, batch_size, bucket_size=-1, sort_by=None, trim_function=None,
                      random_shuffle=True, char_level_func=None, word_id2word=None, char_word2id=None, enable_cuda=False):
     if bucket_size == -1:
-        bucket_size = batch_size * 300
+        bucket_size = batch_size * 30
     sample_count = None
     for k, v in data_dict.items():
         if sample_count is None:

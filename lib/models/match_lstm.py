@@ -53,6 +53,7 @@ class MatchLSTMModel(torch.nn.Module):
         self.embedding_oov_init = config['embedding_oov_init']
 
         config = self.model_config['embedding']['char_level']
+        self.enable_char_embedding = config['enable']
         self.char_embedding_size = config['embedding_size']
         self.char_embedding_rnn_size = config['embedding_rnn_size']
         self.char_embedding_dropout = config['embedding_dropout']
@@ -86,23 +87,25 @@ class MatchLSTMModel(torch.nn.Module):
                                         enable_cuda=self.enable_cuda)
 
         # char embeddings
-        self.char_embedding = TimeDistributedEmbedding(Embedding(embedding_size=self.char_embedding_size,
-                                                                 vocab_size=self.vocab_size_char,
-                                                                 trainable=self.char_embedding_trainable,
-                                                                 word_dropout_rate=self.char_embedding_word_dropout,
-                                                                 dropout_rate=self.char_embedding_dropout,
-                                                                 embedding_type='random',
-                                                                 enable_cuda=self.enable_cuda))
+        if self.enable_char_embedding:
+            self.char_embedding = TimeDistributedEmbedding(Embedding(embedding_size=self.char_embedding_size,
+                                                                     vocab_size=self.vocab_size_char,
+                                                                     trainable=self.char_embedding_trainable,
+                                                                     word_dropout_rate=self.char_embedding_word_dropout,
+                                                                     dropout_rate=self.char_embedding_dropout,
+                                                                     embedding_type='random',
+                                                                     enable_cuda=self.enable_cuda))
 
-        self.char_encoder = TimeDistributedRNN(rnn=BiLSTM(nemb=self.char_embedding_size, nhids=self.char_embedding_rnn_size,
-                                                          dropout_between_rnn_hiddens=self.dropout_between_rnn_hiddens,
-                                                          dropout_between_rnn_layers=self.dropout_between_rnn_layers,
-                                                          dropout_in_rnn_weights=self.dropout_in_rnn_weights,
-                                                          use_layernorm=self.use_layernorm,
-                                                          enable_cuda=self.enable_cuda))
+            self.char_encoder = TimeDistributedRNN(rnn=BiLSTM(nemb=self.char_embedding_size, nhids=self.char_embedding_rnn_size,
+                                                              dropout_between_rnn_hiddens=self.dropout_between_rnn_hiddens,
+                                                              dropout_between_rnn_layers=self.dropout_between_rnn_layers,
+                                                              dropout_in_rnn_weights=self.dropout_in_rnn_weights,
+                                                              use_layernorm=self.use_layernorm,
+                                                              enable_cuda=self.enable_cuda))
 
         # lstm encoder
-        self.encoder = BiLSTM(nemb=self.embedding_size + self.char_embedding_rnn_size[-1], nhids=self.rnn_hidden_size,
+        _tmp_input_dim = self.embedding_size + self.char_embedding_rnn_size[-1] if self.enable_char_embedding else self.embedding_size
+        self.encoder = BiLSTM(nemb=_tmp_input_dim, nhids=self.rnn_hidden_size,
                               dropout_between_rnn_hiddens=self.dropout_between_rnn_hiddens,
                               dropout_between_rnn_layers=self.dropout_between_rnn_layers,
                               dropout_in_rnn_weights=self.dropout_in_rnn_weights,
@@ -124,14 +127,18 @@ class MatchLSTMModel(torch.nn.Module):
         # word embedding
         story_word_embedding, story_mask = self.word_embedding.forward(input_story)  # batch x time x emb
         question_word_embedding, question_mask = self.word_embedding.forward(input_question)  # batch x time x emb
-        # char embedding
-        story_char_embedding, story_char_mask = self.char_embedding.forward(input_story_char)  # batch x time x max_char x emb
-        _, story_char_embedding, _ = self.char_encoder.forward(story_char_embedding, story_char_mask)  # batch x time x char_emb
-        question_char_embedding, question_char_mask = self.char_embedding.forward(input_question_char)  # batch x time x max_char x emb
-        _, question_char_embedding, _ = self.char_encoder.forward(question_char_embedding, question_char_mask)  # batch x time x char_emb
-        # concat them together
-        story_embedding = torch.cat([story_word_embedding, story_char_embedding], -1)
-        question_embedding = torch.cat([question_word_embedding, question_char_embedding], -1)
+        if self.enable_char_embedding:
+            # char embedding
+            story_char_embedding, story_char_mask = self.char_embedding.forward(input_story_char)  # batch x time x max_char x emb
+            _, story_char_embedding, _ = self.char_encoder.forward(story_char_embedding, story_char_mask)  # batch x time x char_emb
+            question_char_embedding, question_char_mask = self.char_embedding.forward(input_question_char)  # batch x time x max_char x emb
+            _, question_char_embedding, _ = self.char_encoder.forward(question_char_embedding, question_char_mask)  # batch x time x char_emb
+            # concat them together
+            story_embedding = torch.cat([story_word_embedding, story_char_embedding], -1)
+            question_embedding = torch.cat([question_word_embedding, question_char_embedding], -1)
+        else:
+            story_embedding = story_word_embedding
+            question_embedding = question_word_embedding
         # encodings
         story_encoding, _, _ = self.encoder.forward(story_embedding, story_mask)
         question_encoding, _, _ = self.encoder.forward(question_embedding, question_mask)

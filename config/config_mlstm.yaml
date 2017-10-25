@@ -28,6 +28,7 @@ embedding:
     embedding_oov_init: 'random'
 
   char_level:
+    enable: False
     embedding_size: 32
     embedding_rnn_size: [32]
     embedding_trainable: True
