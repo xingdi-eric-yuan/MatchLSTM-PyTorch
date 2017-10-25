@@ -118,7 +118,6 @@ def the_main_function(config_dir='config', update_dict=None):
                     optimizer.zero_grad()
                     _model.zero_grad()
                     preds, entropy_penalty = _model.forward(input_story, input_question, input_story_char, input_question_char)  # batch x time x 2
-                    preds = torch.log(preds)
                     # loss
                     loss = criterion(preds, answer_ranges)
                     loss = torch.mean(torch.cat(loss))
