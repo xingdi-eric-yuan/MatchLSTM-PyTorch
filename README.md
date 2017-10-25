@@ -2,7 +2,7 @@
 A simple pytorch implementation of MatchLSTM (Wang and Jiang, 2016) model for SQuAD (Rajpurkar et al., 2016) question answering.
 
 ## Tokenized SQuAD
-A tokenized version of SQuAD dataset is included. Because the original test set is hidden, so I split a subset from training split as "valid" set, and use the original dev set as test. the splitting is on Wikipedia article level.
+A NLTK tokenized version of SQuAD dataset is included. Because the original test set is hidden, so I split a subset from training split as "valid" set, and use the original dev set as test. the splitting is on Wikipedia article level.
 
 ## Requirements
 * Python 2.7
