@@ -823,7 +823,10 @@ class BoundaryDecoder(torch.nn.Module):
 
         state_stp = [(h_0, h_0)]
         beta_list = []
-        mask = torch.autograd.Variable(torch.ones(x.size(0)))  # fake mask
+        if self.enable_cuda:
+            mask = torch.autograd.Variable(torch.ones(x.size(0)).cuda())  # fake mask
+        else:
+            mask = torch.autograd.Variable(torch.ones(x.size(0)))  # fake mask
         for t in range(2):
 
             previous_h, previous_c = state_stp[t]

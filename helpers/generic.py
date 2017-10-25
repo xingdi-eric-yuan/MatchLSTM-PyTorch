@@ -300,7 +300,7 @@ def to_pt(np_matrix, enable_cuda=False):
 def evaluate(model, data, criterion, trim_function, char_level_func, word_id2word, char_word2id, batch_size=32, enable_cuda=False):
     model.eval()
     data_size = data['input_story'].shape[0]
-    total_nll_loss, total_entropy_penalty, total_loss = 0.0, 0.0, 0.0
+    total_nll_loss = 0.0
     number_batch = (data_size + batch_size - 1) // batch_size
     exact_match, f1 = 0.0, 0.0
 
