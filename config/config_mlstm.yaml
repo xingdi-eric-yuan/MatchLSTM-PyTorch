@@ -19,9 +19,9 @@ optimizer:
 
 embedding:
   word_level:
-    path: /home/eryua/glove.840B.300d.simple_causality.1.0.lower.h5
-    embedding_size: 20
-    embedding_type: 'random'
+    path: glove.840B.300d.txt.h5
+    embedding_size: 300
+    embedding_type: 'pretrained'
     embedding_trainable: False
     embedding_dropout: 0.3
     embedding_word_dropout: 0.
@@ -35,10 +35,10 @@ embedding:
     embedding_word_dropout: 0.
 
 match_lstm:
-  rnn_hidden_size: [20]
-  match_lstm_hidden_size: [22]
+  rnn_hidden_size: [256]
+  match_lstm_hidden_size: [256]
   dropout_between_rnn_layers: 0.1
   dropout_between_rnn_hiddens: 0.1
   dropout_in_rnn_weights: 0.
   use_layernorm: False
-  decoder_hidden_size: 34
+  decoder_hidden_size: 128
