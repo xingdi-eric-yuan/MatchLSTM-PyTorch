@@ -7,10 +7,10 @@ import argparse
 import yaml
 import torch
 from tqdm import tqdm
-from mrclib.dataset.squad_dataset import SquadDataset
-from mrclib.models.match_lstm import MatchLSTMModel
-from mrclib.objectives.generic import StandardNLL
-from mrclib.utils.setup_logger import setup_logging, log_git_commit
+from lib.dataset.squad_dataset import SquadDataset
+from lib.models.match_lstm import MatchLSTMModel
+from lib.objectives.generic import StandardNLL
+from lib.utils.setup_logger import setup_logging, log_git_commit
 from helpers.generic import print_shape_info, print_data_samples, random_generator, squad_trim, add_char_level_stuff,\
     torch_model_summarize, generator_queue, evaluate
 

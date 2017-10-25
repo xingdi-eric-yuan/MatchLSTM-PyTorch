@@ -813,6 +813,7 @@ class BoundaryDecoder(torch.nn.Module):
         super(BoundaryDecoder, self).__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
+        self.enable_cuda = enable_cuda
         self.attention_layer = BoundaryDecoderAttention(input_dim=input_dim,
                                                         output_dim=hidden_dim,
                                                         enable_cuda=enable_cuda)
