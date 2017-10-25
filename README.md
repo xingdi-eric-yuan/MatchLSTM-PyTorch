@@ -1,5 +1,5 @@
 # A Pytorch Implementation of MatchLSTM for SQuAD
-A simple pytorch implementation of MatchLSTM model for SQuAD question answering.
+A simple pytorch implementation of MatchLSTM (Wang and Jiang, 2016) model for SQuAD (Rajpurkar et al., 2016) question answering.
 
 ## Tokenized SQuAD
 A tokenized version of SQuAD dataset is included. Because the original test set is hidden, so I split a subset from training split as "valid" set, and use the original dev set as test. the splitting is on Wikipedia article level.
@@ -21,7 +21,11 @@ TODO
 * [SQuAD Paper][squad_paper_link]
 * [MatchLSTM Paper][match_lstm_paper_link]
 
+## LICENSE
+[MIT][mit_license]
+
 [pytorch_install]: http://pytorch.org/
 [glove_download]: https://nlp.stanford.edu/projects/glove/
 [squad_paper_link]: https://arxiv.org/abs/1606.05250
 [match_lstm_paper_link]: https://arxiv.org/abs/1608.07905
+[mit_license]: https://github.com/xingdi-eric-yuan/match_lstm_qa_pytorch/blob/debug/LICENSE
