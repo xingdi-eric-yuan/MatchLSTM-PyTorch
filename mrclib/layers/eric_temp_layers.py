@@ -493,12 +493,11 @@ class MatchLSTMAttention(torch.nn.Module):
         output: z:          batch x inp_p+inp_q
     '''
 
-    def __init__(self, input_p_dim, input_q_dim, output_dim, entropy_reg=0.0, enable_cuda=False):
+    def __init__(self, input_p_dim, input_q_dim, output_dim, enable_cuda=False):
         super(MatchLSTMAttention, self).__init__()
         self.input_p_dim = input_p_dim
         self.input_q_dim = input_q_dim
         self.output_dim = output_dim
-        self.entropy_reg = entropy_reg
         self.enable_cuda = enable_cuda
         self.nlayers = len(self.output_dim)
 
@@ -528,15 +527,6 @@ class MatchLSTMAttention(torch.nn.Module):
             self.w[i].data.uniform_(-0.05, 0.05)
             self.match_b[i].data.fill_(1.0)
 
-    def get_entropy_penalty(self, attention, mask):
-        # attention: batch x time
-        # mask:      batch x time
-        entropy = - torch.sum(attention * torch.log(attention + self._eps), dim=-1)  # batch
-        average_entropy = torch.mean(entropy)  # 1
-        exp_average_entropy = torch.exp(average_entropy)  # 1
-        # we want to minimize the entropy (make it more certain, more sparse)
-        return exp_average_entropy
-
     def forward(self, input_p, mask_p, input_q, mask_q, h_tm1, depth):
         G_p = self.W_p[depth](input_p).unsqueeze(1)  # batch x None x out
         G_q = self.W_q[depth](input_q)  # batch x time x out
@@ -545,13 +535,12 @@ class MatchLSTMAttention(torch.nn.Module):
         alpha = torch.matmul(G, self.w[depth])  # batch x time
         alpha = alpha + self.match_b[depth].unsqueeze(0)  # batch x time
         alpha = masked_softmax(alpha, mask_q, axis=-1, enable_cuda=self.enable_cuda)  # batch x time
-        entropy_penalty = self.get_entropy_penalty(alpha, mask_q) * self.entropy_reg
         alpha = alpha.unsqueeze(1)  # batch x 1 x time
         # batch x time x input_q, batch x 1 x time
         z = torch.bmm(alpha, input_q)  # batch x 1 x input_q
         z = z.squeeze(1)  # batch x input_q
         z = torch.cat([input_p, z], 1)  # batch x input_p+input_q
-        return z, entropy_penalty
+        return z
 
 
 class StackedMatchLSTM(torch.nn.Module):
@@ -618,7 +607,6 @@ class StackedMatchLSTM(torch.nn.Module):
         batch_size = input_p.size(0)
         hidden_to_hidden_dropout_masks = [None for _ in range(self.nlayers)]
         state_stp = [self.get_init_hidden(batch_size)]
-        entropy_penalties = []
         for t in range(input_p.size(1)):
             state_depth = []
             input_mask = mask_p[:, t]
@@ -637,17 +625,15 @@ class StackedMatchLSTM(torch.nn.Module):
                     hidden_to_hidden_dropout_masks[d] = self.get_dropout_mask(previous_h, _rate=self.dropout_between_rnn_hiddens)
                 dropped_previous_h = hidden_to_hidden_dropout_masks[d] * previous_h
 
-                drop_input, entropy_penalty = self.attention_layer.forward(drop_input, input_mask, input_q, mask_q, h_tm1=dropped_previous_h, depth=d)
+                drop_input = self.attention_layer.forward(drop_input, input_mask, input_q, mask_q, h_tm1=dropped_previous_h, depth=d)
                 new_h, new_c = rnn(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
                 state_depth.append((new_h, new_c))
-                entropy_penalties.append(entropy_penalty)
 
             state_stp.append(state_depth)
 
         states = [h[-1][0].unsqueeze(1) for h in state_stp[1:]]  # list of batch x 1 x hid
         states = torch.cat(states, 1)  # batch x time x hid
-        entropy_penalties = torch.cat(entropy_penalties)
-        return states, mask_p, entropy_penalties
+        return states, mask_p
 
 
 class UniMatchLSTM(torch.nn.Module):
@@ -665,14 +651,13 @@ class UniMatchLSTM(torch.nn.Module):
     '''
 
     def __init__(self, input_p_dim, input_q_dim, nhids, dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, entropy_reg=0.0, enable_cuda=False):
+                 use_layernorm=False, enable_cuda=False):
         super(UniMatchLSTM, self).__init__()
         self.nhids = nhids
         self.input_p_dim = input_p_dim
         self.input_q_dim = input_q_dim
         self.attention_layer = MatchLSTMAttention(input_p_dim, input_q_dim,
                                                   output_dim=nhids,
-                                                  entropy_reg=entropy_reg,
                                                   enable_cuda=enable_cuda)
 
         self.rnn = StackedMatchLSTM(input_p_dim=self.input_p_dim,
@@ -687,10 +672,10 @@ class UniMatchLSTM(torch.nn.Module):
 
     def forward(self, input_p, mask_p, input_q, mask_q):
         # stacked rnn
-        states, _, entropy_penalties = self.rnn.forward(input_p, mask_p, input_q, mask_q)
+        states, _ = self.rnn.forward(input_p, mask_p, input_q, mask_q)
         last_state = states[:, -1]  # batch x hid
         states = states * mask_p.unsqueeze(-1)  # batch x time x hid
-        return states, last_state, mask_p, entropy_penalties
+        return states, last_state, mask_p
 
 
 class BiMatchLSTM(torch.nn.Module):
@@ -706,7 +691,7 @@ class BiMatchLSTM(torch.nn.Module):
     '''
 
     def __init__(self, input_p_dim, input_q_dim, nhids, dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, entropy_reg=0.0, enable_cuda=False):
+                 use_layernorm=False, enable_cuda=False):
         super(BiMatchLSTM, self).__init__()
         self.nhids = nhids
         self.input_p_dim = input_p_dim
@@ -714,7 +699,6 @@ class BiMatchLSTM(torch.nn.Module):
         self.enable_cuda = enable_cuda
         self.attention_layer = MatchLSTMAttention(input_p_dim, input_q_dim,
                                                   output_dim=[hid // 2 for hid in self.nhids],
-                                                  entropy_reg=entropy_reg,
                                                   enable_cuda=enable_cuda)
 
         self.forward_rnn = StackedMatchLSTM(input_p_dim=self.input_p_dim,
@@ -749,23 +733,22 @@ class BiMatchLSTM(torch.nn.Module):
     def forward(self, input_p, mask_p, input_q, mask_q):
 
         # forward pass
-        forward_states, _, forward_entropy_penalties = self.forward_rnn.forward(input_p, mask_p, input_q, mask_q)
+        forward_states, _ = self.forward_rnn.forward(input_p, mask_p, input_q, mask_q)
         forward_last_state = forward_states[:, -1]  # batch x hid/2
         forward_states = forward_states * mask_p.unsqueeze(-1)  # batch x time x hid/2
 
         # backward pass
         input_p_inverted = self.flip(input_p, flip_dim=1)  # batch x time x p_dim (backward)
         mask_p_inverted = self.flip(mask_p, flip_dim=1)  # batch x time (backward)
-        backward_states, _, backward_entropy_penalties = self.backward_rnn.forward(input_p_inverted, mask_p_inverted, input_q, mask_q)
+        backward_states, _ = self.backward_rnn.forward(input_p_inverted, mask_p_inverted, input_q, mask_q)
         backward_last_state = backward_states[:, -1]  # batch x hid/2
         backward_states = backward_states * mask_p_inverted.unsqueeze(-1)  # batch x time x hid/2
         backward_states = self.flip(backward_states, flip_dim=1)  # batch x time x hid/2
 
         concat_states = torch.cat([forward_states, backward_states], -1)  # batch x time x hid
         concat_last_state = torch.cat([forward_last_state, backward_last_state], -1)  # batch x hid
-        concat_entropy_penalties = torch.cat([forward_entropy_penalties, backward_entropy_penalties])
 
-        return concat_states, concat_last_state, mask_p, concat_entropy_penalties
+        return concat_states, concat_last_state, mask_p
 
 
 class BoundaryDecoderAttention(torch.nn.Module):

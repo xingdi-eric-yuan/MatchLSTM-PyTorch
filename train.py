@@ -117,34 +117,31 @@ def the_main_function(config_dir='config', update_dict=None):
 
                     optimizer.zero_grad()
                     _model.zero_grad()
-                    preds, entropy_penalty = _model.forward(input_story, input_question, input_story_char, input_question_char)  # batch x time x 2
+                    preds = _model.forward(input_story, input_question, input_story_char, input_question_char)  # batch x time x 2
                     # loss
                     loss = criterion(preds, answer_ranges)
                     loss = torch.mean(torch.cat(loss))
-                    entropy_penalty = torch.mean(entropy_penalty)
-                    total_loss = loss + entropy_penalty
-                    total_loss.backward()
+                    loss.backward()
                     # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
                     torch.nn.utils.clip_grad_norm(_model.parameters(), model_config['optimizer']['clip_grad_norm'])
                     optimizer.step()  # apply gradients
                     preds = torch.max(preds, 1)[1].cpu().data.numpy().squeeze()  # batch x 2
                     batch_loss = loss.cpu().data.numpy()
-                    batch_entropy_penalty = entropy_penalty.cpu().data.numpy()
-                    sum_loss += (batch_loss + batch_entropy_penalty) * batch_size
-                    pbar.set_description('epoch=%d, batch=%d, avg_loss=%.5f, batch_loss=%.5f, batch_entropy_penalty=%.5f, lr=%.6f' % (epoch, i, sum_loss / float(batch_size * (i + 1)), batch_loss, batch_entropy_penalty, learning_rate))
+                    sum_loss += batch_loss * batch_size
+                    pbar.set_description('epoch=%d, batch=%d, avg_loss=%.5f, batch_loss=%.5f, lr=%.6f' % (epoch, i, sum_loss / float(batch_size * (i + 1)), batch_loss, learning_rate))
                     pbar.update(1)
 
             # eval on valid set
-            val_f1, val_em, val_nll_loss, val_entropy_loss, val_total_loss = evaluate(model=_model, data=valid_data, criterion=criterion,
-                                                                                      trim_function=squad_trim, char_level_func=add_char_level_stuff,
-                                                                                      word_id2word=word_vocab, char_word2id=char_word2id,
-                                                                                      batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
-            logger.info("epoch=%d, valid nll loss=%.5f, valid entropy loss=%.5f, valid total loss=%.5f, valid f1=%.5f, valid em=%.5f, lr=%.6f" % (epoch, val_nll_loss, val_entropy_loss, val_total_loss, val_f1, val_em, learning_rate))
+            val_f1, val_em, val_nll_loss = evaluate(model=_model, data=valid_data, criterion=criterion,
+                                                    trim_function=squad_trim, char_level_func=add_char_level_stuff,
+                                                    word_id2word=word_vocab, char_word2id=char_word2id,
+                                                    batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
+            logger.info("epoch=%d, valid nll loss=%.5f, valid f1=%.5f, valid em=%.5f, lr=%.6f" % (epoch, val_nll_loss, val_f1, val_em, learning_rate))
             # Save the model if the validation loss is the best we've seen so far.
-            if not best_val_loss or val_total_loss < best_val_loss:
+            if not best_val_loss or val_nll_loss < best_val_loss:
                 with open(model_config['dataset']['model_save_path'], 'wb') as save_f:
                     torch.save(_model, save_f)
-                best_val_loss = val_total_loss
+                best_val_loss = val_nll_loss
             else:
                 if epoch >= model_config['optimizer']['learning_rate_decay_from_this_epoch']:
                     # Anneal the learning rate if no improvement has been seen in the validation dataset.
@@ -163,12 +160,12 @@ def the_main_function(config_dir='config', update_dict=None):
         _model = torch.load(save_f)
 
     # Run on test data.
-    test_f1, test_em, test_nll_loss, test_entropy_loss, test_total_loss = evaluate(model=_model, data=test_data, criterion=criterion,
-                                                                                   trim_function=squad_trim, char_level_func=add_char_level_stuff,
-                                                                                   word_id2word=word_vocab, char_word2id=char_word2id,
-                                                                                   batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
+    test_f1, test_em, test_nll_loss = evaluate(model=_model, data=test_data, criterion=criterion,
+                                               trim_function=squad_trim, char_level_func=add_char_level_stuff,
+                                               word_id2word=word_vocab, char_word2id=char_word2id,
+                                               batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
     logger.info("------------------------------------------------------------------------------------\n")
-    logger.info("nll loss=%.5f, entropy loss=%.5f, total loss=%.5f, f1=%.5f, em=%.5f" % (test_nll_loss, test_entropy_loss, test_total_loss, test_f1, test_em))
+    logger.info("nll loss=%.5f, f1=%.5f, em=%.5f" % (test_nll_loss, test_f1, test_em))
 
     return 0
 

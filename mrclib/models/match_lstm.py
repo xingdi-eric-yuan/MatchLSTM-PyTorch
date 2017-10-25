@@ -68,7 +68,6 @@ class MatchLSTMModel(torch.nn.Module):
         self.dropout_in_rnn_weights = config['dropout_in_rnn_weights']
         self.use_layernorm = config['use_layernorm']
         self.decoder_hidden_size = config['decoder_hidden_size']
-        self.entropy_reg = config['entropy_reg']
 
         self.enable_cuda = self.model_config['scheduling']['enable_cuda']
 
@@ -115,7 +114,6 @@ class MatchLSTMModel(torch.nn.Module):
                                       dropout_between_rnn_layers=self.dropout_between_rnn_layers,
                                       dropout_in_rnn_weights=self.dropout_in_rnn_weights,
                                       use_layernorm=self.use_layernorm,
-                                      entropy_reg=self.entropy_reg,
                                       enable_cuda=self.enable_cuda)
 
         self.decoder_init_state_generator = torch.nn.Linear(self.match_lstm_hidden_size[-1], self.decoder_hidden_size)
@@ -138,11 +136,11 @@ class MatchLSTMModel(torch.nn.Module):
         story_encoding, _, _ = self.encoder.forward(story_embedding, story_mask)
         question_encoding, _, _ = self.encoder.forward(question_embedding, question_mask)
         # match lstm
-        story_match_encoding, story_match_encoding_last_state, _, entropy_penalty = self.match_lstm.forward(story_encoding, story_mask, question_encoding, question_mask)
+        story_match_encoding, story_match_encoding_last_state, _ = self.match_lstm.forward(story_encoding, story_mask, question_encoding, question_mask)
         # generate decoder init state using story match encoding last state (batch x hid)
         init_state = self.decoder_init_state_generator.forward(story_match_encoding_last_state)
         init_state = torch.tanh(init_state)  # batch x hid
         # decode
         output = self.boundary_decoder.forward(story_match_encoding, story_mask, init_state)  # batch x time x 2
 
-        return output, entropy_penalty
+        return output

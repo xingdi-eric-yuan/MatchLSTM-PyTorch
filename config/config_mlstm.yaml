@@ -42,4 +42,3 @@ match_lstm:
   dropout_in_rnn_weights: 0.
   use_layernorm: False
   decoder_hidden_size: 34
-  entropy_reg: 0.0
