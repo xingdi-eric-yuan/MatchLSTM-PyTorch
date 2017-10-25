@@ -36,7 +36,7 @@ embedding:
     embedding_word_dropout: 0.
 
 match_lstm:
-  rnn_hidden_size: [256]
+  rnn_hidden_size: [150]
   match_lstm_hidden_size: [256]
   dropout_between_rnn_layers: 0.1
   dropout_between_rnn_hiddens: 0.1
