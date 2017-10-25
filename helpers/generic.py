@@ -127,7 +127,7 @@ def generator_queue(generator, max_q_size=10, wait_time=0.05, nb_worker=1):
 def random_generator(data_dict, input_keys, output_keys, batch_size, bucket_size=-1, sort_by=None, trim_function=None,
                      random_shuffle=True, char_level_func=None, word_id2word=None, char_word2id=None, enable_cuda=False):
     if bucket_size == -1:
-        bucket_size = batch_size * 300
+        bucket_size = batch_size * 30
     sample_count = None
     for k, v in data_dict.items():
         if sample_count is None:
@@ -300,7 +300,7 @@ def to_pt(np_matrix, enable_cuda=False):
 def evaluate(model, data, criterion, trim_function, char_level_func, word_id2word, char_word2id, batch_size=32, enable_cuda=False):
     model.eval()
     data_size = data['input_story'].shape[0]
-    total_nll_loss, total_entropy_penalty, total_loss = 0.0, 0.0, 0.0
+    total_nll_loss = 0.0
     number_batch = (data_size + batch_size - 1) // batch_size
     exact_match, f1 = 0.0, 0.0
 
@@ -314,15 +314,13 @@ def evaluate(model, data, criterion, trim_function, char_level_func, word_id2wor
         gold_standard_answer = data['input_answer'][i * batch_size: (i + 1) * batch_size]
 
         input_story = batch_dict['input_story']
-        _bs = input_story.shape[0]  # actual batch size
-        preds, entropy_penalty = model.forward(to_pt(input_story, enable_cuda),
-                                               to_pt(batch_dict['input_question'], enable_cuda),
-                                               to_pt(batch_dict['input_story_char'], enable_cuda),
-                                               to_pt(batch_dict['input_question_char'], enable_cuda))  # batch x time x 2
+        preds = model.forward(to_pt(input_story, enable_cuda),
+                              to_pt(batch_dict['input_question'], enable_cuda),
+                              to_pt(batch_dict['input_story_char'], enable_cuda),
+                              to_pt(batch_dict['input_question_char'], enable_cuda))  # batch x time x 2
         # loss
         loss = criterion(preds, to_pt(batch_dict['answer_ranges'], enable_cuda))
-        loss = torch.sum(torch.cat(loss)).cpu().data.numpy() * _bs
-        entropy_penalty = torch.mean(entropy_penalty).cpu().data.numpy() * _bs
+        loss = torch.sum(torch.cat(loss)).cpu().data.numpy()
         preds = torch.max(preds, 1)[1].cpu().data.numpy().squeeze()  # batch x 2
 
         for s, p, g in zip(input_story, preds, gold_standard_answer):
@@ -335,13 +333,9 @@ def evaluate(model, data, criterion, trim_function, char_level_func, word_id2wor
                 f1_score, p, g)
 
         total_nll_loss = total_nll_loss + loss
-        total_entropy_penalty = total_entropy_penalty + entropy_penalty * _bs
-        total_loss = total_loss + loss + entropy_penalty
 
     f1 = float(f1) / float(data_size)
     exact_match = float(exact_match) / float(data_size)
     nll_loss = float(total_nll_loss) / float(data_size)
-    entropy_loss = float(total_entropy_penalty) / float(data_size)
-    total_loss = float(total_loss) / float(data_size)
-    return f1, exact_match, nll_loss, entropy_loss, total_loss
+    return f1, exact_match, nll_loss
 # end method evaluate
