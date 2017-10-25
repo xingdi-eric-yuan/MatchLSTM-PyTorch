@@ -7,7 +7,7 @@ scheduling:
   batch_size: 32
   valid_batch_size: 32
   epoch: 50
-  enable_cuda: False
+  enable_cuda: True
   cuda_seed: 42
   
 optimizer:
