@@ -1,19 +1,18 @@
 dataset:
   h5: squad_dataset.1.1.2.h5
-  max_sent_len: 30
   model_save_path: 'saved_models/model.pt'
 
 scheduling:
   batch_size: 32
   valid_batch_size: 32
   epoch: 50
-  enable_cuda: True
+  enable_cuda: True  # disable this when running on machine without cuda
   cuda_seed: 42
   
 optimizer:
-  step_rule: 'adam'
+  step_rule: 'adam'  # adam, sgd
   learning_rate: 0.001
-  learning_rate_decay_ratio: 0.8
+  learning_rate_decay_ratio: 0.8  # if valid loss goes up, decay the learning rate
   learning_rate_decay_from_this_epoch: 2
   clip_grad_norm: 5
 
@@ -21,25 +20,25 @@ embedding:
   word_level:
     path: glove.840B.300d.txt.h5
     embedding_size: 300
-    embedding_type: 'pretrained'
+    embedding_type: 'pretrained'  # pretrained, random
     embedding_trainable: False
-    embedding_dropout: 0.3
+    embedding_dropout: 0.
     embedding_word_dropout: 0.
-    embedding_oov_init: 'random'
+    embedding_oov_init: 'one'  # zero, one, random
 
   char_level:
     enable: False
     embedding_size: 32
-    embedding_rnn_size: [32]
+    embedding_rnn_size: [32]  # 16 on each direction
     embedding_trainable: True
-    embedding_dropout: 0.3
+    embedding_dropout: 0.
     embedding_word_dropout: 0.
 
 match_lstm:
-  rnn_hidden_size: [150]
-  match_lstm_hidden_size: [256]
-  dropout_between_rnn_layers: 0.1
-  dropout_between_rnn_hiddens: 0.1
+  rnn_hidden_size: [150]  # 75 on each direction
+  match_lstm_hidden_size: [300]  # 75 on each direction
+  dropout_between_rnn_layers: 0.
+  dropout_between_rnn_hiddens: 0.
   dropout_in_rnn_weights: 0.
-  use_layernorm: False
-  decoder_hidden_size: 128
+  use_layernorm: True
+  decoder_hidden_size: 150  # uni directional rnn with 2 time steps
