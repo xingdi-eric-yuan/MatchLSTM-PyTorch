@@ -28,26 +28,20 @@ def masked_softmax(x, m=None, axis=-1, enable_cuda=False):
 
 
 class LayerNorm(torch.nn.Module):
-    def __init__(self, input_dim, enable_cuda=False):
-        super(LayerNorm, self).__init__()
-        self.input_dim = input_dim
-        self.enable_cuda = enable_cuda
-        self.alpha = torch.nn.Parameter(torch.FloatTensor(self.input_dim))
-        self.beta = torch.nn.Parameter(torch.FloatTensor(self.input_dim))
-        self._eps = 1e-5
-        self.init_weights()
 
-    def init_weights(self):
-        self.alpha.data.fill_(1.0)
-        self.beta.data.fill_(0.0)
+    def __init__(self, input_dim):
+        super(LayerNorm, self).__init__()
+        self.gamma = torch.nn.Parameter(torch.ones(input_dim))
+        self.beta = torch.nn.Parameter(torch.zeros(input_dim))
+        self.eps = 1e-6
 
     def forward(self, x, mask):
         # x:        nbatch x hidden
         # mask:     nbatch
-        output = (x - torch.mean(x, dim=1, keepdim=True)) / torch.sqrt(torch.var(x, dim=1, keepdim=True) + self._eps)
-        output = self.alpha.unsqueeze(0) * output + self.beta.unsqueeze(0)
-        output = output * mask.unsqueeze(1)
-        return output
+        mean = x.mean(-1, keepdim=True)
+        std = x.std(-1, keepdim=True)
+        output = self.gamma * (x - mean) / (std + self.eps) + self.beta
+        return output * mask.unsqueeze(1)
 
 
 class Embedding(torch.nn.Module):
