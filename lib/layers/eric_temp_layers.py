@@ -39,7 +39,7 @@ class LayerNorm(torch.nn.Module):
         # x:        nbatch x hidden
         # mask:     nbatch
         mean = x.mean(-1, keepdim=True)
-        std = x.std(-1, keepdim=True)
+        std = torch.sqrt(x.var(dim=1, keepdim=True) + self.eps)
         output = self.gamma * (x - mean) / (std + self.eps) + self.beta
         return output * mask.unsqueeze(1)
 
