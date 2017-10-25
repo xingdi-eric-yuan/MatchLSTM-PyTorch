@@ -321,7 +321,7 @@ def evaluate(model, data, criterion, trim_function, char_level_func, word_id2wor
                                                to_pt(batch_dict['input_question_char'], enable_cuda))  # batch x time x 2
         # loss
         loss = criterion(preds, to_pt(batch_dict['answer_ranges'], enable_cuda))
-        loss = torch.sum(torch.cat(loss)).cpu().data.numpy() * _bs
+        loss = torch.sum(torch.cat(loss)).cpu().data.numpy()
         entropy_penalty = torch.mean(entropy_penalty).cpu().data.numpy() * _bs
         preds = torch.max(preds, 1)[1].cpu().data.numpy().squeeze()  # batch x 2
 
