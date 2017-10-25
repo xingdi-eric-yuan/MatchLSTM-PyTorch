@@ -457,18 +457,6 @@ class TimeDistributedRNN(torch.nn.Module):
         last = last.view(batch_size, T, -1)  # batch x T x enc
         return seq, last, mask
 
-        # output_sequence, output_last, output_mask = [], [], []
-        # for i in range(x.size(1)):
-        #     _x = x[:, i]
-        #     _mask = mask[:, i]
-        #     seq, last, msk = self.rnn.forward(_x, _mask)
-        #     output_sequence.append(seq.unsqueeze(1))
-        #     output_last.append(last.unsqueeze(1))
-        #     output_mask.append(msk.unsqueeze(1))
-        # return torch.cat(output_sequence, 1),\
-        #     torch.cat(output_last, 1),\
-        #     torch.cat(output_mask, 1)
-
 
 class TimeDistributedEmbedding(torch.nn.Module):
     '''
@@ -488,15 +476,6 @@ class TimeDistributedEmbedding(torch.nn.Module):
         emb = emb.view(batch_size, T, time, -1)
         mask = mask.view(batch_size, T, time)
         return emb, mask
-
-        # output, masks = [], []
-        # for i in range(x.size(1)):
-        #     _x = x[:, i]
-        #     emb, msk = self.emb_layer.forward(_x)
-        #     output.append(emb.unsqueeze(1))
-        #     masks.append(msk.unsqueeze(1))
-        # return torch.cat(output, 1),\
-        #     torch.cat(masks, 1)
 
 
 class MatchLSTMAttention(torch.nn.Module):
