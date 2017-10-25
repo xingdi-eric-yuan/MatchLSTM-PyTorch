@@ -120,7 +120,7 @@ def the_main_function(config_dir='config', update_dict=None):
                     preds = _model.forward(input_story, input_question, input_story_char, input_question_char)  # batch x time x 2
                     # loss
                     loss = criterion(preds, answer_ranges)
-                    loss = torch.mean(torch.cat(loss))
+                    loss = torch.mean(loss)
                     loss.backward()
                     # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
                     torch.nn.utils.clip_grad_norm(_model.parameters(), model_config['optimizer']['clip_grad_norm'])

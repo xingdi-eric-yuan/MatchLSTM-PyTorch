@@ -320,7 +320,7 @@ def evaluate(model, data, criterion, trim_function, char_level_func, word_id2wor
                               to_pt(batch_dict['input_question_char'], enable_cuda))  # batch x time x 2
         # loss
         loss = criterion(preds, to_pt(batch_dict['answer_ranges'], enable_cuda))
-        loss = torch.sum(torch.cat(loss)).cpu().data.numpy()
+        loss = torch.sum(loss).cpu().data.numpy()
         preds = torch.max(preds, 1)[1].cpu().data.numpy().squeeze()  # batch x 2
 
         for s, p, g in zip(input_story, preds, gold_standard_answer):
