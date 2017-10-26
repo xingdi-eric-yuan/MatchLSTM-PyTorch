@@ -821,7 +821,7 @@ class BoundaryDecoder(torch.nn.Module):
         for t in range(2):
 
             previous_h, previous_c = state_stp[t]
-            curr_input, beta = self.attention_layer.forward(x, x_mask, h_tm1=h_0)
+            curr_input, beta = self.attention_layer.forward(x, x_mask, h_tm1=previous_h)
             new_h, new_c = self.rnn(curr_input, mask, previous_h, previous_c, previous_h)
             state_stp.append((new_h, new_c))
             beta_list.append(beta)
