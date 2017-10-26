@@ -207,8 +207,8 @@ def print_data_samples(dataset, check_data, head, tail):
         print(' '.join([dataset.meta_data['id2word'][a] for a in check_data['input_question'][num] if a > 0]))
 
         print('#######################################          answer range')
-        print(check_data['answer_ranges'][num])
-        head, tail = np.argmax(check_data['answer_ranges'][num][0]), np.argmax(check_data['answer_ranges'][num][1])
+        a_range = check_data['answer_ranges'][num]
+        head, tail = np.argmax(a_range[:, 0]), np.argmax(a_range[:, 1])
         print('#######################################          answer')
         print(' '.join([dataset.meta_data['id2word'][a] for a in check_data['input_story'][num][head: tail + 1] if a > 0]))
         print('#######################################          answerS')

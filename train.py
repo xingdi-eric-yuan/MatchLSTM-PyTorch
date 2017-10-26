@@ -37,13 +37,13 @@ def the_main_function(config_dir='config', update_dict=None):
         model_config = yaml.safe_load(reader)
     dataset = SquadDataset(dataset_h5=model_config['dataset']['h5'],
                            data_path='tokenized_squad_v1.1.2/',
-                           ignore_case=False)
+                           ignore_case=True)
 
     train_data, valid_data, test_data = dataset.get_data(train_size=TRAIN_SIZE, valid_size=VALID_SIZE, test_size=TEST_SIZE)
     print_shape_info(train_data)
     if False:
         print('----------------------------------  printing out data shape')
-        print_data_samples(dataset, valid_data, 12, 23)
+        print_data_samples(dataset, train_data, 12, 15)
         exit(0)
 
     # Set the random seed manually for reproducibility.
