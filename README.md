@@ -1,4 +1,4 @@
-# A Pytorch Implementation of MatchLSTM for SQuAD
+# A Pytorch Implementation of MatchLSTM for SQuAD (NOT FINISHED YET)
 A simple pytorch implementation of MatchLSTM (Wang and Jiang, 2016) model for SQuAD (Rajpurkar et al., 2016) question answering.
 
 ## Tokenized SQuAD
