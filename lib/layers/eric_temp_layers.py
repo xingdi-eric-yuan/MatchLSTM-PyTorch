@@ -565,7 +565,7 @@ class StackedMatchLSTM(torch.nn.Module):
         self.stack_rnns()
 
     def stack_rnns(self):
-        rnns = [LSTMCell(self.input_p_dim + self.input_q_dim if i == 0 else self.nhids[i - 1] + self.input_q_dim, self.nhids[i], use_layernorm=self.use_layernorm, use_bias=True)
+        rnns = [LSTMCell((self.input_p_dim + self.input_q_dim) if i == 0 else (self.nhids[i - 1] + self.input_q_dim), self.nhids[i], use_layernorm=self.use_layernorm, use_bias=True)
                 for i in range(self.nlayers)]
         if self.dropout_in_rnn_weights > 0.:
             print('Applying hidden weight dropout {:.2f}'.format(self.dropout_in_rnn_weights))
