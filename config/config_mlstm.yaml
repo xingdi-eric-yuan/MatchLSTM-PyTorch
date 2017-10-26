@@ -21,7 +21,7 @@ embedding:
     path: glove.840B.300d.txt.h5
     embedding_size: 300
     embedding_type: 'pretrained'  # pretrained, random
-    embedding_trainable: False
+    embedding_trainable: False  # fix pretrained embedding
     embedding_dropout: 0.
     embedding_word_dropout: 0.
     embedding_oov_init: 'zero'  # zero, one, random
@@ -35,8 +35,8 @@ embedding:
     embedding_word_dropout: 0.
 
 match_lstm:
-  rnn_hidden_size: [150]  # 75 on each direction
-  match_lstm_hidden_size: [300]  # 75 on each direction
+  rnn_hidden_size: [150]  # 75 on each direction, use an empty list to disable preproc_rnn, if you want..
+  match_lstm_hidden_size: [300]  # 150 on each direction
   dropout_between_rnn_layers: 0.
   dropout_between_rnn_hiddens: 0.
   dropout_in_rnn_weights: 0.
