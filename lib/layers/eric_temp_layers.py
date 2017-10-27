@@ -197,8 +197,6 @@ class LSTMCell(torch.nn.Module):
             self.layernorm_h = LayerNorm(input_dim=self.hidden_size * 4)
             self.layernorm_c = LayerNorm(input_dim=self.hidden_size)
         self.reset_parameters()
-        if use_bias:
-            self.bias = torch.cat([self.bias_f, self.bias_iog])
 
     def reset_parameters(self):
         torch.nn.init.orthogonal(self.weight_hh.data)
@@ -227,7 +225,7 @@ class LSTMCell(torch.nn.Module):
             wh = self.layernorm_h(wh, mask_)
         pre_act = wi + wh
         if self.use_bias:
-            pre_act = pre_act + self.bias.unsqueeze(0)
+            pre_act = pre_act + torch.cat([self.bias_f, self.bias_iog]).unsqueeze(0)
 
         f, i, o, g = torch.split(pre_act, split_size=self.hidden_size, dim=1)
         expand_mask_ = mask_.unsqueeze(1)  # batch x None
