@@ -14,7 +14,6 @@ from lib.utils.setup_logger import setup_logging, log_git_commit
 from helpers.generic import print_shape_info, print_data_samples, random_generator, squad_trim, add_char_level_stuff,\
     torch_model_summarize, generator_queue, evaluate
 
-
 logger = logging.getLogger(__name__)
 wait_time = 0.01  # in seconds
 
@@ -176,7 +175,7 @@ if __name__ == "__main__":
     for _p in ['logs', 'saved_models']:
         if not os.path.exists(_p):
             os.mkdir(_p)
-    setup_logging(default_path='config/logging_ptr.yaml', default_level=logging.INFO, add_time_stamp=True)
+    setup_logging(default_path='config/logging_config.yaml', default_level=logging.INFO, add_time_stamp=True)
     # goal_prompt(logger)
     log_git_commit(logger)
     parser = argparse.ArgumentParser(description="train network.")
