@@ -3,8 +3,8 @@ dataset:
   model_save_path: 'saved_models/model.pt'
 
 scheduling:
-  batch_size: 32
-  valid_batch_size: 32
+  batch_size: 64
+  valid_batch_size: 64
   epoch: 50
   enable_cuda: True  # disable this when running on machine without cuda
   cuda_seed: 42
