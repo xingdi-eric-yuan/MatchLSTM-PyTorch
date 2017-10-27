@@ -6,7 +6,7 @@ import torch
 import numpy as np
 
 from ..layers.eric_temp_layers import BiLSTM, Embedding,\
-    TimeDistributedRNN, TimeDistributedEmbedding, BiMatchLSTM, BoundaryDecoder
+    TimeDistributedRNN, TimeDistributedEmbedding, BiMatchLSTM, BoundaryDecoder, FastBiLSTM
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +42,14 @@ class MatchLSTMModel(torch.nn.Module):
         logger.info("number of trainable parameters: %s" % (amount))
 
     def read_config(self):
+        # global config
+        config = self.model_config['global']
+        self.fast_rnns = config['fast_rnns']
+        self.dropout_between_rnn_hiddens = config['dropout_between_rnn_hiddens']
+        self.dropout_between_rnn_layers = config['dropout_between_rnn_layers']
+        self.dropout_in_rnn_weights = config['dropout_in_rnn_weights']
+        self.use_layernorm = config['use_layernorm']
+
         # embedding config
         config = self.model_config['embedding']['word_level']
         self.embed_path = config['path']
@@ -64,10 +72,6 @@ class MatchLSTMModel(torch.nn.Module):
         config = self.model_config[self.model_name]
         self.rnn_hidden_size = config['rnn_hidden_size']
         self.match_lstm_hidden_size = config['match_lstm_hidden_size']
-        self.dropout_between_rnn_hiddens = config['dropout_between_rnn_hiddens']
-        self.dropout_between_rnn_layers = config['dropout_between_rnn_layers']
-        self.dropout_in_rnn_weights = config['dropout_in_rnn_weights']
-        self.use_layernorm = config['use_layernorm']
         self.decoder_hidden_size = config['decoder_hidden_size']
         self.enable_preproc_rnn = len(self.rnn_hidden_size) > 0
 
@@ -96,23 +100,34 @@ class MatchLSTMModel(torch.nn.Module):
                                                                      dropout_rate=self.char_embedding_dropout,
                                                                      embedding_type='random',
                                                                      enable_cuda=self.enable_cuda))
+            if self.fast_rnns:
+                char_encoder_rnn = FastBiLSTM(ninp=self.char_embedding_size,
+                                              nhids=self.char_embedding_rnn_size,
+                                              dropout_between_rnn_layers=self.dropout_between_rnn_layers)
+            else:
+                char_encoder_rnn = BiLSTM(nemb=self.char_embedding_size, nhids=self.char_embedding_rnn_size,
+                                          dropout_between_rnn_hiddens=self.dropout_between_rnn_hiddens,
+                                          dropout_between_rnn_layers=self.dropout_between_rnn_layers,
+                                          dropout_in_rnn_weights=self.dropout_in_rnn_weights,
+                                          use_layernorm=self.use_layernorm,
+                                          enable_cuda=self.enable_cuda)
 
-            self.char_encoder = TimeDistributedRNN(rnn=BiLSTM(nemb=self.char_embedding_size, nhids=self.char_embedding_rnn_size,
-                                                              dropout_between_rnn_hiddens=self.dropout_between_rnn_hiddens,
-                                                              dropout_between_rnn_layers=self.dropout_between_rnn_layers,
-                                                              dropout_in_rnn_weights=self.dropout_in_rnn_weights,
-                                                              use_layernorm=self.use_layernorm,
-                                                              enable_cuda=self.enable_cuda))
+            self.char_encoder = TimeDistributedRNN(rnn=char_encoder_rnn)
 
         emb_output_size = self.embedding_size + self.char_embedding_rnn_size[-1] if self.enable_char_embedding else self.embedding_size
         # lstm encoder
         if self.enable_preproc_rnn:
-            self.encoder = BiLSTM(nemb=emb_output_size, nhids=self.rnn_hidden_size,
-                                  dropout_between_rnn_hiddens=self.dropout_between_rnn_hiddens,
-                                  dropout_between_rnn_layers=self.dropout_between_rnn_layers,
-                                  dropout_in_rnn_weights=self.dropout_in_rnn_weights,
-                                  use_layernorm=self.use_layernorm,
-                                  enable_cuda=self.enable_cuda)
+            if self.fast_rnns:
+                self.encoder = FastBiLSTM(ninp=emb_output_size,
+                                          nhids=self.rnn_hidden_size,
+                                          dropout_between_rnn_layers=self.dropout_between_rnn_layers)
+            else:
+                self.encoder = BiLSTM(nemb=emb_output_size, nhids=self.rnn_hidden_size,
+                                      dropout_between_rnn_hiddens=self.dropout_between_rnn_hiddens,
+                                      dropout_between_rnn_layers=self.dropout_between_rnn_layers,
+                                      dropout_in_rnn_weights=self.dropout_in_rnn_weights,
+                                      use_layernorm=self.use_layernorm,
+                                      enable_cuda=self.enable_cuda)
 
         enc_output_size = self.rnn_hidden_size[-1] if self.enable_preproc_rnn else emb_output_size
         self.match_lstm = BiMatchLSTM(input_p_dim=enc_output_size, input_q_dim=enc_output_size, nhids=self.match_lstm_hidden_size,
