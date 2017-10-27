@@ -207,8 +207,8 @@ def print_data_samples(dataset, check_data, head, tail):
         print(' '.join([dataset.meta_data['id2word'][a] for a in check_data['input_question'][num] if a > 0]))
 
         print('#######################################          answer range')
-        print(check_data['answer_ranges'][num])
-        head, tail = np.argmax(check_data['answer_ranges'][num][0]), np.argmax(check_data['answer_ranges'][num][1])
+        a_range = check_data['answer_ranges'][num]
+        head, tail = np.argmax(a_range[:, 0]), np.argmax(a_range[:, 1])
         print('#######################################          answer')
         print(' '.join([dataset.meta_data['id2word'][a] for a in check_data['input_story'][num][head: tail + 1] if a > 0]))
         print('#######################################          answerS')
@@ -320,7 +320,7 @@ def evaluate(model, data, criterion, trim_function, char_level_func, word_id2wor
                               to_pt(batch_dict['input_question_char'], enable_cuda))  # batch x time x 2
         # loss
         loss = criterion(preds, to_pt(batch_dict['answer_ranges'], enable_cuda))
-        loss = torch.sum(torch.cat(loss)).cpu().data.numpy()
+        loss = torch.sum(loss).cpu().data.numpy()
         preds = torch.max(preds, 1)[1].cpu().data.numpy().squeeze()  # batch x 2
 
         for s, p, g in zip(input_story, preds, gold_standard_answer):

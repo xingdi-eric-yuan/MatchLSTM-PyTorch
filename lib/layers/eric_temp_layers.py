@@ -220,6 +220,8 @@ class LSTMCell(torch.nn.Module):
         Returns:
             h_1, c_1: Tensors containing the next hidden and cell state.
         """
+        # if (mask_.data == 0).all():
+        #     return h_0, c_0
         wh = torch.mm(dropped_h_0, self.weight_hh)
         wi = torch.mm(input_, self.weight_ih)
         if self.use_layernorm:
@@ -281,14 +283,13 @@ class StackedLSTM(torch.nn.Module):
         self.rnns = torch.nn.ModuleList(rnns)
 
     def get_init_hidden(self, bsz):
-        weight = next(self.parameters()).data
         if self.enable_cuda:
-            return [(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda(),
-                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda())
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda(),
+                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda())
                     for i in range(self.nlayers)]
         else:
-            return [(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()),
-                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()))
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])),
+                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])))
                     for i in range(self.nlayers)]
 
     def get_dropout_mask(self, x, _rate=0.5):
@@ -565,7 +566,7 @@ class StackedMatchLSTM(torch.nn.Module):
         self.stack_rnns()
 
     def stack_rnns(self):
-        rnns = [LSTMCell(self.input_p_dim + self.input_q_dim if i == 0 else self.nhids[i - 1] + self.input_q_dim, self.nhids[i], use_layernorm=self.use_layernorm, use_bias=True)
+        rnns = [LSTMCell((self.input_p_dim + self.input_q_dim) if i == 0 else (self.nhids[i - 1] + self.input_q_dim), self.nhids[i], use_layernorm=self.use_layernorm, use_bias=True)
                 for i in range(self.nlayers)]
         if self.dropout_in_rnn_weights > 0.:
             print('Applying hidden weight dropout {:.2f}'.format(self.dropout_in_rnn_weights))
@@ -574,14 +575,13 @@ class StackedMatchLSTM(torch.nn.Module):
         self.rnns = torch.nn.ModuleList(rnns)
 
     def get_init_hidden(self, bsz):
-        weight = next(self.parameters()).data
         if self.enable_cuda:
-            return [(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda(),
-                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda())
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda(),
+                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda())
                     for i in range(self.nlayers)]
         else:
-            return [(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()),
-                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()))
+            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])),
+                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])))
                     for i in range(self.nlayers)]
 
     def get_dropout_mask(self, x, _rate=0.5):
@@ -821,7 +821,7 @@ class BoundaryDecoder(torch.nn.Module):
         for t in range(2):
 
             previous_h, previous_c = state_stp[t]
-            curr_input, beta = self.attention_layer.forward(x, x_mask, h_tm1=h_0)
+            curr_input, beta = self.attention_layer.forward(x, x_mask, h_tm1=previous_h)
             new_h, new_c = self.rnn(curr_input, mask, previous_h, previous_c, previous_h)
             state_stp.append((new_h, new_c))
             beta_list.append(beta)
@@ -831,3 +831,109 @@ class BoundaryDecoder(torch.nn.Module):
         res = torch.cat(res, 2)  # batch x time x 2
         res = res * x_mask.unsqueeze(2)  # batch x time x 2
         return res
+
+
+class FastBiLSTM(torch.nn.Module):
+    """
+    Adapted from https://github.com/facebookresearch/DrQA/
+    now support:    different rnn size for each layer
+                    all zero rows in batch (from time distributed layer, by reshaping certain dimension)
+    """
+
+    def __init__(self, ninp, nhids, dropout_between_rnn_layers=0.):
+        super(FastBiLSTM, self).__init__()
+        self.ninp = ninp
+        self.nhids = [h // 2 for h in nhids]
+        self.nlayers = len(self.nhids)
+        self.dropout_between_rnn_layers = dropout_between_rnn_layers
+        self.stack_rnns()
+
+    def stack_rnns(self):
+        rnns = [torch.nn.LSTM(self.ninp if i == 0 else self.nhids[i - 1] * 2,
+                              self.nhids[i],
+                              num_layers=1,
+                              bidirectional=True) for i in range(self.nlayers)]
+        self.rnns = torch.nn.ModuleList(rnns)
+
+    def forward(self, x, mask):
+
+        def pad_(tensor, n):
+            if n > 0:
+                zero_pad = torch.autograd.Variable(torch.zeros((n,) + tensor.size()[1:]))
+                if x.is_cuda:
+                    zero_pad = zero_pad.cuda()
+                tensor = torch.cat([tensor, zero_pad])
+            return tensor
+
+        """
+        inputs: x:          batch x time x inp
+                mask:       batch x time
+        output: encoding:   batch x time x hidden[-1]
+        """
+        # Compute sorted sequence lengths
+        batch_size = x.size(0)
+        lengths = mask.data.eq(1).long().sum(1).squeeze()
+        _, idx_sort = torch.sort(lengths, dim=0, descending=True)
+        _, idx_unsort = torch.sort(idx_sort, dim=0)
+
+        lengths = list(lengths[idx_sort])
+        idx_sort = torch.autograd.Variable(idx_sort)
+        idx_unsort = torch.autograd.Variable(idx_unsort)
+
+        # Sort x
+        x = x.index_select(0, idx_sort)
+
+        # remove non-zero rows, and remember how many zeros
+        n_nonzero = np.count_nonzero(lengths)
+        n_zero = batch_size - n_nonzero
+        if n_zero != 0:
+            lengths = lengths[:n_nonzero]
+            x = x[:n_nonzero]
+
+        # Transpose batch and sequence dims
+        x = x.transpose(0, 1)
+
+        # Pack it up
+        rnn_input = torch.nn.utils.rnn.pack_padded_sequence(x, lengths)
+
+        # Encode all layers
+        outputs = [rnn_input]
+        for i in range(self.nlayers):
+            rnn_input = outputs[-1]
+
+            # dropout between rnn layers
+            if self.dropout_between_rnn_layers > 0:
+                dropout_input = F.dropout(rnn_input.data,
+                                          p=self.dropout_between_rnn_layers,
+                                          training=self.training)
+                rnn_input = torch.nn.utils.rnn.PackedSequence(dropout_input,
+                                                              rnn_input.batch_sizes)
+            seq, last = self.rnns[i](rnn_input)
+            outputs.append(seq)
+            if i == self.nlayers - 1:
+                # last layer
+                last_state = last[0]  # (num_layers * num_directions, batch, hidden_size)
+                last_state = torch.cat([last_state[0], last_state[1]], 1)  # batch x hid_f+hid_b
+
+        # Unpack everything
+        for i, o in enumerate(outputs[1:], 1):
+            outputs[i] = torch.nn.utils.rnn.pad_packed_sequence(o)[0]
+        output = outputs[-1]
+
+        # Transpose and unsort
+        output = output.transpose(0, 1)  # batch x time x enc
+
+        # re-padding
+        output = pad_(output, n_zero)
+        last_state = pad_(last_state, n_zero)
+
+        output = output.index_select(0, idx_unsort)
+
+        # Pad up to original batch sequence length
+        if output.size(1) != mask.size(1):
+            padding = torch.zeros(output.size(0),
+                                  mask.size(1) - output.size(1),
+                                  output.size(2)).type(output.data.type())
+            output = torch.cat([output, torch.autograd.Variable(padding)], 1)
+
+        return output.contiguous(), last_state, mask

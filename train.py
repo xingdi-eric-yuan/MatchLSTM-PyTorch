@@ -14,7 +14,6 @@ from lib.utils.setup_logger import setup_logging, log_git_commit
 from helpers.generic import print_shape_info, print_data_samples, random_generator, squad_trim, add_char_level_stuff,\
     torch_model_summarize, generator_queue, evaluate
 
-
 logger = logging.getLogger(__name__)
 wait_time = 0.01  # in seconds
 
@@ -37,13 +36,13 @@ def the_main_function(config_dir='config', update_dict=None):
         model_config = yaml.safe_load(reader)
     dataset = SquadDataset(dataset_h5=model_config['dataset']['h5'],
                            data_path='tokenized_squad_v1.1.2/',
-                           ignore_case=False)
+                           ignore_case=True)
 
     train_data, valid_data, test_data = dataset.get_data(train_size=TRAIN_SIZE, valid_size=VALID_SIZE, test_size=TEST_SIZE)
     print_shape_info(train_data)
     if False:
         print('----------------------------------  printing out data shape')
-        print_data_samples(dataset, valid_data, 12, 23)
+        print_data_samples(dataset, train_data, 12, 15)
         exit(0)
 
     # Set the random seed manually for reproducibility.
@@ -98,6 +97,7 @@ def the_main_function(config_dir='config', update_dict=None):
     data_queue, _ = generator_queue(train_batch_generator, max_q_size=20)
     learning_rate = init_learning_rate
     best_val_loss = None
+    be_patience = 0
 
     try:
         for epoch in range(model_config['scheduling']['epoch']):
@@ -120,7 +120,7 @@ def the_main_function(config_dir='config', update_dict=None):
                     preds = _model.forward(input_story, input_question, input_story_char, input_question_char)  # batch x time x 2
                     # loss
                     loss = criterion(preds, answer_ranges)
-                    loss = torch.mean(torch.cat(loss))
+                    loss = torch.mean(loss)
                     loss.backward()
                     # `clip_grad_norm` helps prevent the exploding gradient problem in RNNs / LSTMs.
                     torch.nn.utils.clip_grad_norm(_model.parameters(), model_config['optimizer']['clip_grad_norm'])
@@ -142,12 +142,17 @@ def the_main_function(config_dir='config', update_dict=None):
                 with open(model_config['dataset']['model_save_path'], 'wb') as save_f:
                     torch.save(_model, save_f)
                 best_val_loss = val_nll_loss
+                be_patience = 0
             else:
                 if epoch >= model_config['optimizer']['learning_rate_decay_from_this_epoch']:
-                    # Anneal the learning rate if no improvement has been seen in the validation dataset.
-                    learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
-                    for param_group in optimizer.param_groups:
-                        param_group['lr'] = learning_rate
+                    if be_patience < model_config['optimizer']['learning_rate_decay_patience']:
+                        be_patience += 1
+                    else:
+                        # Anneal the learning rate if no improvement has been seen in the validation dataset.
+                        learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
+                        for param_group in optimizer.param_groups:
+                            param_group['lr'] = learning_rate
+                        be_patience = 0
             logger.info("========================================================================\n")
 
     # At any point you can hit Ctrl + C to break out of training early.
@@ -176,7 +181,7 @@ if __name__ == "__main__":
     for _p in ['logs', 'saved_models']:
         if not os.path.exists(_p):
             os.mkdir(_p)
-    setup_logging(default_path='config/logging_ptr.yaml', default_level=logging.INFO, add_time_stamp=True)
+    setup_logging(default_path='config/logging_config.yaml', default_level=logging.INFO, add_time_stamp=True)
     # goal_prompt(logger)
     log_git_commit(logger)
     parser = argparse.ArgumentParser(description="train network.")

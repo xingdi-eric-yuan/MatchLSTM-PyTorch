@@ -185,8 +185,8 @@ class SquadDataset(object):
                 # answer ranges: if multiple answers, use first one
                 head, tail = _a_ranges[0].split(':', 1)
                 head, tail = int(head), int(tail)
-                answer_head = [1 if i == head else 0 for i in range(len(story_id))]
-                answer_tail = [1 if i == tail - 1 else 0 for i in range(len(story_id))]
+                answer_head = [1 if j == head else 0 for j in range(len(story_id))]
+                answer_tail = [1 if j == tail - 1 else 0 for j in range(len(story_id))]
 
                 self._get_char_vocab(_story)
                 self._get_char_vocab(_question)
@@ -286,7 +286,9 @@ class SquadDataset(object):
                      meta_data['max_nb_words_answer']))
 
     def pad_sequences(self, sequences, maxlen=None, dtype='int32', padding='pre', truncating='pre', value=0.):
-        '''Pads each sequence to the same length:
+        '''
+        FROM KERAS
+        Pads each sequence to the same length:
         the length of the longest sequence.
         If maxlen is provided, any sequence longer
         than maxlen is truncated to maxlen.
