@@ -185,12 +185,11 @@ class LSTMCell(torch.nn.Module):
         self.hidden_size = hidden_size
         self.use_bias = use_bias
         self.use_layernorm = use_layernorm
-        self.weight_ih = torch.nn.Parameter(
-            torch.FloatTensor(input_size, 4 * hidden_size))
-        self.weight_hh = torch.nn.Parameter(
-            torch.FloatTensor(hidden_size, 4 * hidden_size))
+        self.weight_ih = torch.nn.Parameter(torch.FloatTensor(input_size, 4 * hidden_size))
+        self.weight_hh = torch.nn.Parameter(torch.FloatTensor(hidden_size, 4 * hidden_size))
         if use_bias:
-            self.bias = torch.nn.Parameter(torch.FloatTensor(4 * hidden_size))
+            self.bias_f = torch.nn.Parameter(torch.FloatTensor(hidden_size))
+            self.bias_iog = torch.nn.Parameter(torch.FloatTensor(3 * hidden_size))
         else:
             self.register_parameter('bias', None)
         if self.use_layernorm:
@@ -198,16 +197,15 @@ class LSTMCell(torch.nn.Module):
             self.layernorm_h = LayerNorm(input_dim=self.hidden_size * 4)
             self.layernorm_c = LayerNorm(input_dim=self.hidden_size)
         self.reset_parameters()
+        if use_bias:
+            self.bias = torch.cat([self.bias_f, self.bias_iog])
 
     def reset_parameters(self):
-        """
-        Initialize parameters following the way proposed in the paper.
-        """
-        stdv = 1.0 / np.sqrt(self.hidden_size)
-        for weight in self.parameters():
-            weight.data.uniform_(-stdv, stdv)
+        torch.nn.init.orthogonal(self.weight_hh.data)
+        torch.nn.init.xavier_uniform(self.weight_ih.data, gain=torch.nn.init.calculate_gain('relu'))
         if self.use_bias:
-            self.bias.data.fill_(0)
+            self.bias_f.data.fill_(1.0)
+            self.bias_iog.data.fill_(0.0)
 
     def forward(self, input_, mask_, h_0, c_0, dropped_h_0):
         """
@@ -503,19 +501,17 @@ class MatchLSTMAttention(torch.nn.Module):
         self.W_r = torch.nn.ModuleList(W_r)
         self.w = torch.nn.ParameterList(w)
         self.match_b = torch.nn.ParameterList(match_b)
-        self._eps = 1e-6
         self.init_weights()
 
     def init_weights(self):
-        initrange = 0.1
         for i in range(self.nlayers):
-            self.W_p[i].weight.data.uniform_(-initrange, initrange)
+            torch.nn.init.xavier_uniform(self.W_p[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.W_q[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.W_r[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
             self.W_p[i].bias.data.fill_(0)
-            self.W_q[i].weight.data.uniform_(-initrange, initrange)
             self.W_q[i].bias.data.fill_(0)
-            self.W_r[i].weight.data.uniform_(-initrange, initrange)
             self.W_r[i].bias.data.fill_(0)
-            self.w[i].data.uniform_(-0.05, 0.05)
+            torch.nn.init.normal(self.w[i].data, mean=0, std=0.05)
             self.match_b[i].data.fill_(1.0)
 
     def forward(self, input_p, mask_p, input_q, mask_q, h_tm1, depth):
@@ -766,12 +762,11 @@ class BoundaryDecoderAttention(torch.nn.Module):
         self.init_weights()
 
     def init_weights(self):
-        initrange = 0.1
-        self.V.weight.data.uniform_(-initrange, initrange)
+        torch.nn.init.xavier_uniform(self.V.weight.data, gain=torch.nn.init.calculate_gain('relu'))
+        torch.nn.init.xavier_uniform(self.W_a.weight.data, gain=torch.nn.init.calculate_gain('relu'))
         self.V.bias.data.fill_(0)
-        self.W_a.weight.data.uniform_(-initrange, initrange)
         self.W_a.bias.data.fill_(0)
-        self.v.data.uniform_(-0.05, 0.05)
+        torch.nn.init.normal(self.v.data, mean=0, std=0.05)
         self.c.data.fill_(1.0)
 
     def forward(self, H_r, mask_r, h_tm1):
