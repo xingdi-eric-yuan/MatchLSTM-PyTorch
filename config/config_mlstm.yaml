@@ -13,7 +13,8 @@ optimizer:
   step_rule: 'adam'  # adam, sgd
   learning_rate: 0.002
   learning_rate_decay_ratio: 0.8  # if valid loss goes up, decay the learning rate
-  learning_rate_decay_from_this_epoch: 2
+  learning_rate_decay_from_this_epoch: 0
+  learning_rate_decay_patience: 2  # be patience
   clip_grad_norm: 5
 
 global:
