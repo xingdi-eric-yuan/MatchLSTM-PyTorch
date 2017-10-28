@@ -40,29 +40,6 @@ def torch_model_summarize(model, show_weights=True, show_parameters=True):
 
 
 ############################################
-# evaluation
-############################################
-def accuracy_eval(graph, _generator, batch_size, data_size):
-
-    number_batch = data_size // batch_size
-    if data_size % batch_size > 0:
-        number_batch += 1
-
-    exact_match = total = 0.0
-    for i in range(number_batch):
-        x, y = _generator.next()
-        y_pred = graph.predict_on_batch(x)  # nb x n_class
-        pred = np.argmax(y_pred, 1)  # nb
-        gold = y[0][:, 0]  # nb
-        same = np.equal(pred, gold).astype('int32')
-        exact_match += np.sum(same)
-
-    total = data_size
-    exact_match = 100.0 * exact_match / total
-    return exact_match
-
-
-############################################
 # generator
 ############################################
 def shuffle_data_dict(data_dict):
