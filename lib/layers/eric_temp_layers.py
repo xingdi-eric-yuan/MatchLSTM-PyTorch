@@ -66,7 +66,7 @@ class Embedding(torch.nn.Module):
         self.trainable = trainable
         self.enable_cuda = enable_cuda
         self.dropout = torch.nn.Dropout(p=dropout_rate)
-        self.embedding_layer = torch.nn.Embedding(self.vocab_size, self.embedding_size)
+        self.embedding_layer = torch.nn.Embedding(self.vocab_size, self.embedding_size, padding_idx=0)
         self.init_weights()
 
     def init_weights(self):
