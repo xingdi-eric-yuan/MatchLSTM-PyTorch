@@ -96,7 +96,7 @@ def the_main_function(config_dir='config', update_dict=None):
     number_batch = (train_data['input_story'].shape[0] + batch_size - 1) // batch_size
     data_queue, _ = generator_queue(train_batch_generator, max_q_size=20)
     learning_rate = init_learning_rate
-    best_val_f1 = None
+    best_val_loss = None
     be_patient = 0
 
     try:
@@ -138,20 +138,23 @@ def the_main_function(config_dir='config', update_dict=None):
                                                     batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
             logger.info("epoch=%d, valid nll loss=%.5f, valid f1=%.5f, valid em=%.5f, lr=%.6f" % (epoch, val_nll_loss, val_f1, val_em, learning_rate))
             # Save the model if the validation loss is the best we've seen so far.
-            if not best_val_f1 or val_f1 > best_val_f1:
+            if not best_val_loss or val_nll_loss < best_val_loss:
                 with open(model_config['dataset']['model_save_path'], 'wb') as save_f:
                     torch.save(_model, save_f)
-                best_val_f1 = val_f1
+                best_val_loss = val_nll_loss
                 be_patient = 0
             else:
                 if epoch >= model_config['optimizer']['learning_rate_decay_from_this_epoch']:
-                    if be_patient < model_config['optimizer']['learning_rate_decay_patience']:
-                        be_patient += 1
-                    else:
-                        # Anneal the learning rate if no improvement has been seen in the validation dataset.
-                        learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
-                        for param_group in optimizer.param_groups:
-                            param_group['lr'] = learning_rate
+                    if be_patient >= model_config['optimizer']['learning_rate_decay_patience']:
+                        if learning_rate * model_config['optimizer']['learning_rate_decay_ratio'] > model_config['optimizer']['learning_rate_cut_lowerbound'] * model_config['optimizer']['learning_rate']:
+                            # Anneal the learning rate if no improvement has been seen in the validation dataset.
+                            logger.info('cutting learning rate from %.5f to %.5f' % (learning_rate, learning_rate * model_config['optimizer']['learning_rate_decay_ratio']))
+                            learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
+                            for param_group in optimizer.param_groups:
+                                param_group['lr'] = learning_rate
+                        else:
+                            logger.info('learning rate %.5f reached lower bound' % (learning_rate))
+                    be_patient += 1
             logger.info("========================================================================\n")
 
             test_f1, test_em, test_nll_loss = evaluate(model=_model, data=test_data, criterion=criterion,
