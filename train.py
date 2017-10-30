@@ -97,7 +97,7 @@ def the_main_function(config_dir='config', update_dict=None):
     data_queue, _ = generator_queue(train_batch_generator, max_q_size=20)
     learning_rate = init_learning_rate
     best_val_loss = None
-    be_patience = 0
+    be_patient = 0
 
     try:
         for epoch in range(model_config['scheduling']['epoch']):
@@ -142,17 +142,16 @@ def the_main_function(config_dir='config', update_dict=None):
                 with open(model_config['dataset']['model_save_path'], 'wb') as save_f:
                     torch.save(_model, save_f)
                 best_val_loss = val_nll_loss
-                be_patience = 0
+                be_patient = 0
             else:
                 if epoch >= model_config['optimizer']['learning_rate_decay_from_this_epoch']:
-                    if be_patience < model_config['optimizer']['learning_rate_decay_patience']:
-                        be_patience += 1
+                    if be_patient < model_config['optimizer']['learning_rate_decay_patience']:
+                        be_patient += 1
                     else:
                         # Anneal the learning rate if no improvement has been seen in the validation dataset.
                         learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
                         for param_group in optimizer.param_groups:
                             param_group['lr'] = learning_rate
-                        be_patience = 0
             logger.info("========================================================================\n")
 
     # At any point you can hit Ctrl + C to break out of training early.

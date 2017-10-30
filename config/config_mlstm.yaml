@@ -3,8 +3,8 @@ dataset:
   model_save_path: 'saved_models/model.pt'
 
 scheduling:
-  batch_size: 32
-  valid_batch_size: 32
+  batch_size: 64
+  valid_batch_size: 64
   epoch: 50
   enable_cuda: True  # disable this when running on machine without cuda
   cuda_seed: 42
@@ -19,10 +19,10 @@ optimizer:
 
 global:
   fast_rnns: True
-  dropout_between_rnn_layers: 0.
-  dropout_between_rnn_hiddens: 0.
+  dropout_between_rnn_layers: 0.2
+  dropout_between_rnn_hiddens: 0.2
   dropout_in_rnn_weights: 0.
-  use_layernorm: False
+  use_layernorm: True
 
 embedding:
   word_level:
@@ -30,7 +30,7 @@ embedding:
     embedding_size: 300
     embedding_type: 'pretrained'  # pretrained, random
     embedding_trainable: False  # fix pretrained embedding
-    embedding_dropout: 0.
+    embedding_dropout: 0.3
     embedding_word_dropout: 0.
     embedding_oov_init: 'zero'  # zero, one, random
 
@@ -39,10 +39,10 @@ embedding:
     embedding_size: 32
     embedding_rnn_size: [32]  # 16 on each direction
     embedding_trainable: True
-    embedding_dropout: 0.
+    embedding_dropout: 0.3
     embedding_word_dropout: 0.
 
 match_lstm:
-  rnn_hidden_size: [150]  # 75 on each direction, use an empty list to disable preproc_rnn, if you want..
+  rnn_hidden_size: [300]  # 150 on each direction, use an empty list to disable preproc_rnn, if you want..
   match_lstm_hidden_size: [300]  # 150 on each direction
   decoder_hidden_size: 150  # uni directional rnn with 2 time steps

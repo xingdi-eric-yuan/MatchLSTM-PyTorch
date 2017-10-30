@@ -40,29 +40,6 @@ def torch_model_summarize(model, show_weights=True, show_parameters=True):
 
 
 ############################################
-# evaluation
-############################################
-def accuracy_eval(graph, _generator, batch_size, data_size):
-
-    number_batch = data_size // batch_size
-    if data_size % batch_size > 0:
-        number_batch += 1
-
-    exact_match = total = 0.0
-    for i in range(number_batch):
-        x, y = _generator.next()
-        y_pred = graph.predict_on_batch(x)  # nb x n_class
-        pred = np.argmax(y_pred, 1)  # nb
-        gold = y[0][:, 0]  # nb
-        same = np.equal(pred, gold).astype('int32')
-        exact_match += np.sum(same)
-
-    total = data_size
-    exact_match = 100.0 * exact_match / total
-    return exact_match
-
-
-############################################
 # generator
 ############################################
 def shuffle_data_dict(data_dict):
@@ -127,7 +104,7 @@ def generator_queue(generator, max_q_size=10, wait_time=0.05, nb_worker=1):
 def random_generator(data_dict, input_keys, output_keys, batch_size, bucket_size=-1, sort_by=None, trim_function=None,
                      random_shuffle=True, char_level_func=None, word_id2word=None, char_word2id=None, enable_cuda=False):
     if bucket_size == -1:
-        bucket_size = batch_size * 30
+        bucket_size = batch_size * 100
     sample_count = None
     for k, v in data_dict.items():
         if sample_count is None:
