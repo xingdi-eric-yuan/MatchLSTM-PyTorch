@@ -23,6 +23,7 @@ global:
   dropout_between_rnn_hiddens: 0.2
   dropout_in_rnn_weights: 0.
   use_layernorm: True
+  use_highway_connections: False
 
 embedding:
   word_level:

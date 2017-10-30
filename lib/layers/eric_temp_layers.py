@@ -257,7 +257,7 @@ class StackedLSTM(torch.nn.Module):
     '''
 
     def __init__(self, nemb, nhids, dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, enable_cuda=False):
+                 use_layernorm=False, use_highway_connections=False, enable_cuda=False):
         super(StackedLSTM, self).__init__()
         self.nhids = nhids
         self.nemb = nemb
@@ -265,9 +265,26 @@ class StackedLSTM(torch.nn.Module):
         self.dropout_between_rnn_hiddens = dropout_between_rnn_hiddens
         self.dropout_between_rnn_layers = dropout_between_rnn_layers
         self.use_layernorm = use_layernorm
+        self.use_highway_connections = use_highway_connections
         self.enable_cuda = enable_cuda
         self.nlayers = len(self.nhids)
         self.stack_rnns()
+        if self.use_highway_connections:
+            self.build_highway_connections()
+
+    def build_highway_connections(self):
+        highway_connections_x = [torch.nn.Linear(self.nemb if i == 0 else self.nhids[i - 1], self.nemb if i == 0 else self.nhids[i - 1]) for i in range(self.nlayers)]
+        highway_connections_x_x = [torch.nn.Linear(self.nemb if i == 0 else self.nhids[i - 1], self.nhids[i], bias=False) for i in range(self.nlayers)]
+        highway_connections_h = [torch.nn.Linear(self.nemb if i == 0 else self.nhids[i - 1], self.nhids[i]) for i in range(self.nlayers)]
+        self.highway_connections_x = torch.nn.ModuleList(highway_connections_x)
+        self.highway_connections_x_x = torch.nn.ModuleList(highway_connections_x_x)
+        self.highway_connections_h = torch.nn.ModuleList(highway_connections_h)
+        for i in range(self.nlayers):
+            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            self.highway_connections_x[i].bias.data.fill_(0)
+            self.highway_connections_h[i].bias.data.fill_(0)
 
     def stack_rnns(self):
         rnns = [LSTMCell(self.nemb if i == 0 else self.nhids[i - 1], self.nhids[i], use_layernorm=self.use_layernorm, use_bias=True)
@@ -279,13 +296,14 @@ class StackedLSTM(torch.nn.Module):
         self.rnns = torch.nn.ModuleList(rnns)
 
     def get_init_hidden(self, bsz):
+        weight = next(self.parameters()).data
         if self.enable_cuda:
-            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda(),
-                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda())
+            return [[(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda(),
+                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda())]
                     for i in range(self.nlayers)]
         else:
-            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])),
-                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])))
+            return [[(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()),
+                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()))]
                     for i in range(self.nlayers)]
 
     def get_dropout_mask(self, x, _rate=0.5):
@@ -298,31 +316,37 @@ class StackedLSTM(torch.nn.Module):
         return mask
 
     def forward(self, x, mask):
-        state_stp = [self.get_init_hidden(x.size(0))]
+        state_stp = self.get_init_hidden(x.size(0))
         hidden_to_hidden_dropout_masks = [None for _ in range(self.nlayers)]
-        for t in range(x.size(1)):
-            state_depth = []
-            input_mask = mask[:, t]
 
-            for d, rnn in enumerate(self.rnns):
+        for d, rnn in enumerate(self.rnns):
+            for t in range(x.size(1)):
+
+                input_mask = mask[:, t]
                 if d == 0:
                     # 0th layer
                     curr_input = x[:, t]
                 else:
-                    curr_input = state_stp[t][d - 1][0]
+                    curr_input = state_stp[d - 1][t][0]
                 # apply dropout layer-to-layer
                 drop_input = F.dropout(curr_input, p=self.dropout_between_rnn_layers, training=self.training) if d > 0 else curr_input
-                previous_h, previous_c = state_stp[t][d]
+                previous_h, previous_c = state_stp[d][t]
                 if t == 0:
                     # get hidden to hidden dropout mask at 0th time step of each rnn layer, and freeze them at teach time step
                     hidden_to_hidden_dropout_masks[d] = self.get_dropout_mask(previous_h, _rate=self.dropout_between_rnn_hiddens)
                 dropped_previous_h = hidden_to_hidden_dropout_masks[d] * previous_h
-                new_h, new_c = rnn(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
-                state_depth.append((new_h, new_c))
 
-            state_stp.append(state_depth)
+                new_h, new_c = rnn.forward(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
 
-        states = [h[-1][0].unsqueeze(1) for h in state_stp[1:]]  # list of batch x 1 x hid
+                if self.use_highway_connections:
+                    gate_x = F.sigmoid(self.highway_connections_x[d].forward(curr_input))
+                    gate_h = F.sigmoid(self.highway_connections_h[d].forward(curr_input))
+                    new_h = self.highway_connections_x_x[d].forward(curr_input * gate_x) + gate_h * new_h  # batch x hid
+                    new_h = new_h * input_mask.unsqueeze(1)
+
+                state_stp[d].append((new_h, new_c))
+
+        states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
         states = torch.cat(states, 1)  # batch x time x hid
         return states, mask
 
@@ -340,7 +364,7 @@ class UniLSTM(torch.nn.Module):
     '''
 
     def __init__(self, nemb, nhids, dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, enable_cuda=False):
+                 use_layernorm=False, use_highway_connections=False, enable_cuda=False):
         super(UniLSTM, self).__init__()
         self.nhids = nhids
         self.nemb = nemb
@@ -350,6 +374,7 @@ class UniLSTM(torch.nn.Module):
                                dropout_between_rnn_layers=dropout_between_rnn_layers,
                                dropout_in_rnn_weights=dropout_in_rnn_weights,
                                use_layernorm=use_layernorm,
+                               use_highway_connections=use_highway_connections,
                                enable_cuda=enable_cuda
                                )
 
@@ -374,7 +399,7 @@ class BiLSTM(torch.nn.Module):
     '''
 
     def __init__(self, nemb, nhids, dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, enable_cuda=False):
+                 use_layernorm=False, use_highway_connections=False, enable_cuda=False):
         super(BiLSTM, self).__init__()
         self.nhids = nhids
         self.nemb = nemb
@@ -385,6 +410,7 @@ class BiLSTM(torch.nn.Module):
                                        dropout_between_rnn_layers=dropout_between_rnn_layers,
                                        dropout_in_rnn_weights=dropout_in_rnn_weights,
                                        use_layernorm=use_layernorm,
+                                       use_highway_connections=use_highway_connections,
                                        enable_cuda=enable_cuda
                                        )
 
@@ -394,6 +420,7 @@ class BiLSTM(torch.nn.Module):
                                         dropout_between_rnn_layers=dropout_between_rnn_layers,
                                         dropout_in_rnn_weights=dropout_in_rnn_weights,
                                         use_layernorm=use_layernorm,
+                                        use_highway_connections=use_highway_connections,
                                         enable_cuda=enable_cuda
                                         )
 
@@ -545,7 +572,7 @@ class StackedMatchLSTM(torch.nn.Module):
 
     def __init__(self, input_p_dim, input_q_dim, nhids, attention_layer,
                  dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, enable_cuda=False):
+                 use_layernorm=False, use_highway_connections=False, enable_cuda=False):
         super(StackedMatchLSTM, self).__init__()
         self.nhids = nhids
         self.input_p_dim = input_p_dim
@@ -555,9 +582,26 @@ class StackedMatchLSTM(torch.nn.Module):
         self.dropout_between_rnn_hiddens = dropout_between_rnn_hiddens
         self.dropout_between_rnn_layers = dropout_between_rnn_layers
         self.use_layernorm = use_layernorm
+        self.use_highway_connections = use_highway_connections
         self.enable_cuda = enable_cuda
         self.nlayers = len(self.nhids)
         self.stack_rnns()
+        if self.use_highway_connections:
+            self.build_highway_connections()
+
+    def build_highway_connections(self):
+        highway_connections_x = [torch.nn.Linear(self.input_p_dim if i == 0 else self.nhids[i - 1], self.input_p_dim if i == 0 else self.nhids[i - 1]) for i in range(self.nlayers)]
+        highway_connections_x_x = [torch.nn.Linear(self.input_p_dim if i == 0 else self.nhids[i - 1], self.nhids[i], bias=False) for i in range(self.nlayers)]
+        highway_connections_h = [torch.nn.Linear(self.input_p_dim if i == 0 else self.nhids[i - 1], self.nhids[i]) for i in range(self.nlayers)]
+        self.highway_connections_x = torch.nn.ModuleList(highway_connections_x)
+        self.highway_connections_x_x = torch.nn.ModuleList(highway_connections_x_x)
+        self.highway_connections_h = torch.nn.ModuleList(highway_connections_h)
+        for i in range(self.nlayers):
+            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            self.highway_connections_x[i].bias.data.fill_(0)
+            self.highway_connections_h[i].bias.data.fill_(0)
 
     def stack_rnns(self):
         rnns = [LSTMCell((self.input_p_dim + self.input_q_dim) if i == 0 else (self.nhids[i - 1] + self.input_q_dim), self.nhids[i], use_layernorm=self.use_layernorm, use_bias=True)
@@ -569,13 +613,14 @@ class StackedMatchLSTM(torch.nn.Module):
         self.rnns = torch.nn.ModuleList(rnns)
 
     def get_init_hidden(self, bsz):
+        weight = next(self.parameters()).data
         if self.enable_cuda:
-            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda(),
-                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])).cuda())
+            return [[(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda(),
+                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()).cuda())]
                     for i in range(self.nlayers)]
         else:
-            return [(torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])),
-                     torch.autograd.Variable(torch.zeros(bsz, self.nhids[i])))
+            return [[(torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()),
+                     torch.autograd.Variable(weight.new(bsz, self.nhids[i]).zero_()))]
                     for i in range(self.nlayers)]
 
     def get_dropout_mask(self, x, _rate=0.5):
@@ -590,32 +635,37 @@ class StackedMatchLSTM(torch.nn.Module):
     def forward(self, input_p, mask_p, input_q, mask_q):
         batch_size = input_p.size(0)
         hidden_to_hidden_dropout_masks = [None for _ in range(self.nlayers)]
-        state_stp = [self.get_init_hidden(batch_size)]
-        for t in range(input_p.size(1)):
-            state_depth = []
-            input_mask = mask_p[:, t]
+        state_stp = self.get_init_hidden(batch_size)
 
-            for d, rnn in enumerate(self.rnns):
+        for d, rnn in enumerate(self.rnns):
+            for t in range(input_p.size(1)):
+
+                input_mask = mask_p[:, t]
                 if d == 0:
                     # 0th layer
                     curr_input = input_p[:, t]
                 else:
-                    curr_input = state_stp[t][d - 1][0]
+                    curr_input = state_stp[d - 1][t][0]
                 # apply dropout layer-to-layer
                 drop_input = F.dropout(curr_input, p=self.dropout_between_rnn_layers, training=self.training) if d > 0 else curr_input
-                previous_h, previous_c = state_stp[t][d]
+                previous_h, previous_c = state_stp[d][t]
                 if t == 0:
                     # get hidden to hidden dropout mask at 0th time step of each rnn layer, and freeze them at teach time step
                     hidden_to_hidden_dropout_masks[d] = self.get_dropout_mask(previous_h, _rate=self.dropout_between_rnn_hiddens)
                 dropped_previous_h = hidden_to_hidden_dropout_masks[d] * previous_h
 
                 drop_input = self.attention_layer.forward(drop_input, input_mask, input_q, mask_q, h_tm1=dropped_previous_h, depth=d)
-                new_h, new_c = rnn(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
-                state_depth.append((new_h, new_c))
+                new_h, new_c = rnn.forward(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
 
-            state_stp.append(state_depth)
+                if self.use_highway_connections:
+                    gate_x = F.sigmoid(self.highway_connections_x[d].forward(curr_input))
+                    gate_h = F.sigmoid(self.highway_connections_h[d].forward(curr_input))
+                    new_h = self.highway_connections_x_x[d].forward(curr_input * gate_x) + gate_h * new_h  # batch x hid
+                    new_h = new_h * input_mask.unsqueeze(1)
 
-        states = [h[-1][0].unsqueeze(1) for h in state_stp[1:]]  # list of batch x 1 x hid
+                state_stp[d].append((new_h, new_c))
+
+        states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
         states = torch.cat(states, 1)  # batch x time x hid
         return states, mask_p
 
@@ -635,7 +685,7 @@ class UniMatchLSTM(torch.nn.Module):
     '''
 
     def __init__(self, input_p_dim, input_q_dim, nhids, dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, enable_cuda=False):
+                 use_layernorm=False, use_highway_connections=False, enable_cuda=False):
         super(UniMatchLSTM, self).__init__()
         self.nhids = nhids
         self.input_p_dim = input_p_dim
@@ -652,6 +702,7 @@ class UniMatchLSTM(torch.nn.Module):
                                     dropout_between_rnn_layers=dropout_between_rnn_layers,
                                     dropout_in_rnn_weights=dropout_in_rnn_weights,
                                     use_layernorm=use_layernorm,
+                                    use_highway_connections=use_highway_connections,
                                     enable_cuda=enable_cuda)
 
     def forward(self, input_p, mask_p, input_q, mask_q):
@@ -675,7 +726,7 @@ class BiMatchLSTM(torch.nn.Module):
     '''
 
     def __init__(self, input_p_dim, input_q_dim, nhids, dropout_between_rnn_hiddens=0., dropout_in_rnn_weights=0., dropout_between_rnn_layers=0.,
-                 use_layernorm=False, enable_cuda=False):
+                 use_layernorm=False, use_highway_connections=False, enable_cuda=False):
         super(BiMatchLSTM, self).__init__()
         self.nhids = nhids
         self.input_p_dim = input_p_dim
@@ -693,6 +744,7 @@ class BiMatchLSTM(torch.nn.Module):
                                             dropout_between_rnn_layers=dropout_between_rnn_layers,
                                             dropout_in_rnn_weights=dropout_in_rnn_weights,
                                             use_layernorm=use_layernorm,
+                                            use_highway_connections=use_highway_connections,
                                             enable_cuda=enable_cuda)
 
         self.backward_rnn = StackedMatchLSTM(input_p_dim=self.input_p_dim,
@@ -703,6 +755,7 @@ class BiMatchLSTM(torch.nn.Module):
                                              dropout_between_rnn_layers=dropout_between_rnn_layers,
                                              dropout_in_rnn_weights=dropout_in_rnn_weights,
                                              use_layernorm=use_layernorm,
+                                             use_highway_connections=use_highway_connections,
                                              enable_cuda=enable_cuda)
 
     def flip(self, tensor, flip_dim=0):
@@ -829,7 +882,7 @@ class BoundaryDecoder(torch.nn.Module):
 class FastBiLSTM(torch.nn.Module):
     """
     Adapted from https://github.com/facebookresearch/DrQA/
-    now support:    different rnn size for each layer
+    now supports:   different rnn size for each layer
                     all zero rows in batch (from time distributed layer, by reshaping certain dimension)
     """
 
