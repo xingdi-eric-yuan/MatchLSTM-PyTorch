@@ -152,7 +152,6 @@ def the_main_function(config_dir='config', update_dict=None):
                         learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
                         for param_group in optimizer.param_groups:
                             param_group['lr'] = learning_rate
-                        be_patient = 0
             logger.info("========================================================================\n")
 
     # At any point you can hit Ctrl + C to break out of training early.
