@@ -154,6 +154,13 @@ def the_main_function(config_dir='config', update_dict=None):
                             param_group['lr'] = learning_rate
             logger.info("========================================================================\n")
 
+            test_f1, test_em, test_nll_loss = evaluate(model=_model, data=test_data, criterion=criterion,
+                                                       trim_function=squad_trim, char_level_func=add_char_level_stuff,
+                                                       word_id2word=word_vocab, char_word2id=char_word2id,
+                                                       batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
+            logger.info("------------------------------------------------------------------------------------\n")
+            logger.info("test: nll loss=%.5f, f1=%.5f, em=%.5f" % (test_nll_loss, test_f1, test_em))
+
     # At any point you can hit Ctrl + C to break out of training early.
     except KeyboardInterrupt:
         logger.info('--------------------------------------------\n')
@@ -164,6 +171,7 @@ def the_main_function(config_dir='config', update_dict=None):
         _model = torch.load(save_f)
 
     # Run on test data.
+    logger.info("loading best model------------------------------------------------------------------\n")
     test_f1, test_em, test_nll_loss = evaluate(model=_model, data=test_data, criterion=criterion,
                                                trim_function=squad_trim, char_level_func=add_char_level_stuff,
                                                word_id2word=word_vocab, char_word2id=char_word2id,
