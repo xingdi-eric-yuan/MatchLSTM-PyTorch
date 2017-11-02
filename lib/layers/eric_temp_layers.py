@@ -331,14 +331,22 @@ class StackedLSTM(torch.nn.Module):
                 dropped_previous_h = hidden_to_hidden_dropout_masks[d] * previous_h
 
                 new_h, new_c = rnn.forward(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
+                state_stp[d].append((new_h, new_c))
 
-                if self.use_highway_connections:
+            if self.use_highway_connections:
+                for t in range(x.size(1)):
+                    input_mask = mask[:, t]
+                    if d == 0:
+                        # 0th layer
+                        curr_input = x[:, t]
+                    else:
+                        curr_input = state_stp[d - 1][t][0]
+                    new_h, new_c = state_stp[d][t]
                     gate_x = F.sigmoid(self.highway_connections_x[d].forward(curr_input))
                     gate_h = F.sigmoid(self.highway_connections_h[d].forward(curr_input))
                     new_h = self.highway_connections_x_x[d].forward(curr_input * gate_x) + gate_h * new_h  # batch x hid
                     new_h = new_h * input_mask.unsqueeze(1)
-
-                state_stp[d].append((new_h, new_c))
+                    state_stp[d][t] = (new_h, new_c)
 
         states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
         states = torch.cat(states, 1)  # batch x time x hid
@@ -651,14 +659,22 @@ class StackedMatchLSTM(torch.nn.Module):
 
                 drop_input = self.attention_layer.forward(drop_input, input_mask, input_q, mask_q, h_tm1=dropped_previous_h, depth=d)
                 new_h, new_c = rnn.forward(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
+                state_stp[d].append((new_h, new_c))
 
-                if self.use_highway_connections:
+            if self.use_highway_connections:
+                for t in range(input_p.size(1)):
+                    input_mask = mask_p[:, t]
+                    if d == 0:
+                        # 0th layer
+                        curr_input = input_p[:, t]
+                    else:
+                        curr_input = state_stp[d - 1][t][0]
+                    new_h, new_c = state_stp[d][t]
                     gate_x = F.sigmoid(self.highway_connections_x[d].forward(curr_input))
                     gate_h = F.sigmoid(self.highway_connections_h[d].forward(curr_input))
                     new_h = self.highway_connections_x_x[d].forward(curr_input * gate_x) + gate_h * new_h  # batch x hid
                     new_h = new_h * input_mask.unsqueeze(1)
-
-                state_stp[d].append((new_h, new_c))
+                    state_stp[d][t] = (new_h, new_c)
 
         states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
         states = torch.cat(states, 1)  # batch x time x hid
