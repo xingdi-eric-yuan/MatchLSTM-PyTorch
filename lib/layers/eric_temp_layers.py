@@ -4,15 +4,13 @@ import torch.nn.functional as F
 from ..utils.embedding_helper import H5EmbeddingManager
 
 
-def masked_softmax(x, m=None, axis=-1, enable_cuda=False):
+def masked_softmax(x, m=None, axis=-1):
     '''
     Softmax with mask (optional)
     '''
     x = torch.clamp(x, min=-15.0, max=15.0)
     if m is not None:
-        m = m.type(torch.FloatTensor)
-        if enable_cuda:
-            m = m.cuda()
+        m = m.float()
         x = x * m
     e_x = torch.exp(x - torch.max(x, dim=axis, keepdim=True)[0])
     if m is not None:
@@ -549,7 +547,7 @@ class MatchLSTMAttention(torch.nn.Module):
         G = F.tanh(G_p + G_q + G_r)  # batch x time x out
         alpha = torch.matmul(G, self.w[depth])  # batch x time
         alpha = alpha + self.match_b[depth].unsqueeze(0)  # batch x time
-        alpha = masked_softmax(alpha, mask_q, axis=-1, enable_cuda=self.enable_cuda)  # batch x time
+        alpha = masked_softmax(alpha, mask_q, axis=-1)  # batch x time
         alpha = alpha.unsqueeze(1)  # batch x 1 x time
         # batch x time x input_q, batch x 1 x time
         z = torch.bmm(alpha, input_q)  # batch x 1 x input_q
@@ -842,7 +840,7 @@ class BoundaryDecoderAttention(torch.nn.Module):
 
         beta = torch.matmul(Fk, self.v)  # batch x time
         beta = beta + self.c.unsqueeze(0)  # batch x time
-        beta = masked_softmax(beta, mask_r, axis=-1, enable_cuda=self.enable_cuda)  # batch x time
+        beta = masked_softmax(beta, mask_r, axis=-1)  # batch x time
         z = torch.bmm(beta.view(beta.size(0), 1, beta.size(1)), H_r)  # batch x 1 x inp
         z = z.view(z.size(0), -1)  # batch x inp
         return z, beta
