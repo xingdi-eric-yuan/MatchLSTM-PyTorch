@@ -81,6 +81,8 @@ class Embedding(torch.nn.Module):
                                                                             oov_init=self.embedding_oov_init)
             del embedding_initr
         word_embedding_init = torch.from_numpy(word_embedding_init).float()
+        if self.enable_cuda:
+            word_embedding_init = word_embedding_init.cuda()
         return word_embedding_init
 
     def compute_mask(self, x):
@@ -192,7 +194,7 @@ class LSTMCell(torch.nn.Module):
 
     def reset_parameters(self):
         torch.nn.init.orthogonal(self.weight_hh.data)
-        torch.nn.init.xavier_uniform(self.weight_ih.data, gain=torch.nn.init.calculate_gain('relu'))
+        torch.nn.init.xavier_uniform(self.weight_ih.data, gain=1)
         if self.use_bias:
             self.bias_f.data.fill_(1.0)
             self.bias_iog.data.fill_(0.0)
@@ -272,9 +274,9 @@ class StackedLSTM(torch.nn.Module):
         self.highway_connections_x_x = torch.nn.ModuleList(highway_connections_x_x)
         self.highway_connections_h = torch.nn.ModuleList(highway_connections_h)
         for i in range(self.nlayers):
-            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=1)
             self.highway_connections_x[i].bias.data.fill_(0)
             self.highway_connections_h[i].bias.data.fill_(0)
 
@@ -531,9 +533,9 @@ class MatchLSTMAttention(torch.nn.Module):
 
     def init_weights(self):
         for i in range(self.nlayers):
-            torch.nn.init.xavier_uniform(self.W_p[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.W_q[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.W_r[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.W_p[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.W_q[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.W_r[i].weight.data, gain=1)
             self.W_p[i].bias.data.fill_(0)
             self.W_q[i].bias.data.fill_(0)
             self.W_r[i].bias.data.fill_(0)
@@ -598,9 +600,9 @@ class StackedMatchLSTM(torch.nn.Module):
         self.highway_connections_x_x = torch.nn.ModuleList(highway_connections_x_x)
         self.highway_connections_h = torch.nn.ModuleList(highway_connections_h)
         for i in range(self.nlayers):
-            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=1)
             self.highway_connections_x[i].bias.data.fill_(0)
             self.highway_connections_h[i].bias.data.fill_(0)
 
@@ -821,8 +823,8 @@ class BoundaryDecoderAttention(torch.nn.Module):
         self.init_weights()
 
     def init_weights(self):
-        torch.nn.init.xavier_uniform(self.V.weight.data, gain=torch.nn.init.calculate_gain('relu'))
-        torch.nn.init.xavier_uniform(self.W_a.weight.data, gain=torch.nn.init.calculate_gain('relu'))
+        torch.nn.init.xavier_uniform(self.V.weight.data, gain=1)
+        torch.nn.init.xavier_uniform(self.W_a.weight.data, gain=1)
         self.V.bias.data.fill_(0)
         self.W_a.bias.data.fill_(0)
         torch.nn.init.normal(self.v.data, mean=0, std=0.05)
