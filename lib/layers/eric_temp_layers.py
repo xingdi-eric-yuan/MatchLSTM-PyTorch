@@ -8,13 +8,7 @@ def masked_softmax(x, m=None, axis=-1, enable_cuda=False):
     '''
     Softmax with mask (optional)
     '''
-    fifteen = torch.autograd.Variable(torch.ones(x.size())) * 15.0
-    minus_fifteen = torch.autograd.Variable(torch.ones(x.size())) * -15.0
-    if enable_cuda:
-        fifteen = fifteen.cuda()
-        minus_fifteen = minus_fifteen.cuda()
-    x = torch.max(x, minus_fifteen)
-    x = torch.min(x, fifteen)
+    x = torch.clamp(x, min=-15.0, max=15.0)
     if m is not None:
         m = m.type(torch.FloatTensor)
         if enable_cuda:
@@ -447,6 +441,7 @@ class BiLSTM(torch.nn.Module):
         backward_states = self.flip(backward_states, flip_dim=1)  # batch x time x hid/2
 
         concat_states = torch.cat([forward_states, backward_states], -1)  # batch x time x hid
+        concat_states = concat_states * mask.unsqueeze(-1)  # batch x time x hid
         concat_last_state = torch.cat([forward_last_state, backward_last_state], -1)  # batch x hid
         return concat_states, concat_last_state, mask
 
@@ -772,17 +767,16 @@ class BiMatchLSTM(torch.nn.Module):
         # forward pass
         forward_states, _ = self.forward_rnn.forward(input_p, mask_p, input_q, mask_q)
         forward_last_state = forward_states[:, -1]  # batch x hid/2
-        forward_states = forward_states * mask_p.unsqueeze(-1)  # batch x time x hid/2
 
         # backward pass
         input_p_inverted = self.flip(input_p, flip_dim=1)  # batch x time x p_dim (backward)
         mask_p_inverted = self.flip(mask_p, flip_dim=1)  # batch x time (backward)
         backward_states, _ = self.backward_rnn.forward(input_p_inverted, mask_p_inverted, input_q, mask_q)
         backward_last_state = backward_states[:, -1]  # batch x hid/2
-        backward_states = backward_states * mask_p_inverted.unsqueeze(-1)  # batch x time x hid/2
         backward_states = self.flip(backward_states, flip_dim=1)  # batch x time x hid/2
 
         concat_states = torch.cat([forward_states, backward_states], -1)  # batch x time x hid
+        concat_states = concat_states * mask_p.unsqueeze(-1)  # batch x time x hid
         concat_last_state = torch.cat([forward_last_state, backward_last_state], -1)  # batch x hid
 
         return concat_states, concat_last_state, mask_p
