@@ -976,4 +976,5 @@ class FastBiLSTM(torch.nn.Module):
                                   output.size(2)).type(output.data.type())
             output = torch.cat([output, torch.autograd.Variable(padding)], 1)
 
-        return output.contiguous(), last_state, mask
+        output = output.contiguous() * mask.unsqueeze(-1)
+        return output, last_state, mask
