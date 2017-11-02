@@ -14,15 +14,15 @@ optimizer:
   learning_rate: 0.002
   learning_rate_decay_ratio: 0.8  # if valid loss goes up, decay the learning rate
   learning_rate_decay_from_this_epoch: 0
-  learning_rate_decay_patience: 2  # be patience
+  learning_rate_decay_patience: 0  # be patience
   learning_rate_cut_lowerbound: 0.01  # if lr < lowerbound * init_lr, then stop cutting
   clip_grad_norm: 5
 
 global:
   fast_rnns: True
-  dropout_between_rnn_layers: 0.2
-  dropout_between_rnn_hiddens: 0.2
-  dropout_in_rnn_weights: 0.
+  dropout_between_rnn_layers: 0.3
+  dropout_between_rnn_hiddens: 0.3
+  dropout_in_rnn_weights: 0.2
   use_layernorm: True
   use_highway_connections: False
 
@@ -33,7 +33,7 @@ embedding:
     embedding_type: 'pretrained'  # pretrained, random
     embedding_trainable: False  # fix pretrained embedding
     embedding_dropout: 0.3
-    embedding_word_dropout: 0.
+    embedding_word_dropout: 0.2
     embedding_oov_init: 'zero'  # zero, one, random
 
   char_level:

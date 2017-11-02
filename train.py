@@ -96,7 +96,7 @@ def the_main_function(config_dir='config', update_dict=None):
     number_batch = (train_data['input_story'].shape[0] + batch_size - 1) // batch_size
     data_queue, _ = generator_queue(train_batch_generator, max_q_size=20)
     learning_rate = init_learning_rate
-    best_val_loss = None
+    best_val_f1 = None
     be_patient = 0
 
     try:
@@ -138,10 +138,10 @@ def the_main_function(config_dir='config', update_dict=None):
                                                     batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
             logger.info("epoch=%d, valid nll loss=%.5f, valid f1=%.5f, valid em=%.5f, lr=%.6f" % (epoch, val_nll_loss, val_f1, val_em, learning_rate))
             # Save the model if the validation loss is the best we've seen so far.
-            if not best_val_loss or val_nll_loss < best_val_loss:
+            if not best_val_f1 or val_f1 > best_val_f1:
                 with open(model_config['dataset']['model_save_path'], 'wb') as save_f:
                     torch.save(_model, save_f)
-                best_val_loss = val_nll_loss
+                best_val_f1 = val_f1
                 be_patient = 0
             else:
                 if epoch >= model_config['optimizer']['learning_rate_decay_from_this_epoch']:
