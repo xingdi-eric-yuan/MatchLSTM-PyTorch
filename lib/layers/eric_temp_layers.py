@@ -4,21 +4,13 @@ import torch.nn.functional as F
 from ..utils.embedding_helper import H5EmbeddingManager
 
 
-def masked_softmax(x, m=None, axis=-1, enable_cuda=False):
+def masked_softmax(x, m=None, axis=-1):
     '''
     Softmax with mask (optional)
     '''
-    fifteen = torch.autograd.Variable(torch.ones(x.size())) * 15.0
-    minus_fifteen = torch.autograd.Variable(torch.ones(x.size())) * -15.0
-    if enable_cuda:
-        fifteen = fifteen.cuda()
-        minus_fifteen = minus_fifteen.cuda()
-    x = torch.max(x, minus_fifteen)
-    x = torch.min(x, fifteen)
+    x = torch.clamp(x, min=-15.0, max=15.0)
     if m is not None:
-        m = m.type(torch.FloatTensor)
-        if enable_cuda:
-            m = m.cuda()
+        m = m.float()
         x = x * m
     e_x = torch.exp(x - torch.max(x, dim=axis, keepdim=True)[0])
     if m is not None:
@@ -89,6 +81,8 @@ class Embedding(torch.nn.Module):
                                                                             oov_init=self.embedding_oov_init)
             del embedding_initr
         word_embedding_init = torch.from_numpy(word_embedding_init).float()
+        if self.enable_cuda:
+            word_embedding_init = word_embedding_init.cuda()
         return word_embedding_init
 
     def compute_mask(self, x):
@@ -200,7 +194,7 @@ class LSTMCell(torch.nn.Module):
 
     def reset_parameters(self):
         torch.nn.init.orthogonal(self.weight_hh.data)
-        torch.nn.init.xavier_uniform(self.weight_ih.data, gain=torch.nn.init.calculate_gain('relu'))
+        torch.nn.init.xavier_uniform(self.weight_ih.data, gain=1)
         if self.use_bias:
             self.bias_f.data.fill_(1.0)
             self.bias_iog.data.fill_(0.0)
@@ -280,9 +274,9 @@ class StackedLSTM(torch.nn.Module):
         self.highway_connections_x_x = torch.nn.ModuleList(highway_connections_x_x)
         self.highway_connections_h = torch.nn.ModuleList(highway_connections_h)
         for i in range(self.nlayers):
-            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=1)
             self.highway_connections_x[i].bias.data.fill_(0)
             self.highway_connections_h[i].bias.data.fill_(0)
 
@@ -337,17 +331,25 @@ class StackedLSTM(torch.nn.Module):
                 dropped_previous_h = hidden_to_hidden_dropout_masks[d] * previous_h
 
                 new_h, new_c = rnn.forward(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
+                state_stp[d].append((new_h, new_c))
 
-                if self.use_highway_connections:
+            if self.use_highway_connections:
+                for t in range(x.size(1)):
+                    input_mask = mask[:, t]
+                    if d == 0:
+                        # 0th layer
+                        curr_input = x[:, t]
+                    else:
+                        curr_input = state_stp[d - 1][t][0]
+                    new_h, new_c = state_stp[d][t]
                     gate_x = F.sigmoid(self.highway_connections_x[d].forward(curr_input))
                     gate_h = F.sigmoid(self.highway_connections_h[d].forward(curr_input))
                     new_h = self.highway_connections_x_x[d].forward(curr_input * gate_x) + gate_h * new_h  # batch x hid
                     new_h = new_h * input_mask.unsqueeze(1)
+                    state_stp[d][t] = (new_h, new_c)
 
-                state_stp[d].append((new_h, new_c))
-
-        states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
-        states = torch.cat(states, 1)  # batch x time x hid
+        states = [h[0] for h in state_stp[-1][1:]]  # list of batch x hid
+        states = torch.stack(states, 1)  # batch x time x hid
         return states, mask
 
 
@@ -447,6 +449,7 @@ class BiLSTM(torch.nn.Module):
         backward_states = self.flip(backward_states, flip_dim=1)  # batch x time x hid/2
 
         concat_states = torch.cat([forward_states, backward_states], -1)  # batch x time x hid
+        concat_states = concat_states * mask.unsqueeze(-1)  # batch x time x hid
         concat_last_state = torch.cat([forward_last_state, backward_last_state], -1)  # batch x hid
         return concat_states, concat_last_state, mask
 
@@ -530,9 +533,9 @@ class MatchLSTMAttention(torch.nn.Module):
 
     def init_weights(self):
         for i in range(self.nlayers):
-            torch.nn.init.xavier_uniform(self.W_p[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.W_q[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.W_r[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.W_p[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.W_q[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.W_r[i].weight.data, gain=1)
             self.W_p[i].bias.data.fill_(0)
             self.W_q[i].bias.data.fill_(0)
             self.W_r[i].bias.data.fill_(0)
@@ -546,7 +549,7 @@ class MatchLSTMAttention(torch.nn.Module):
         G = F.tanh(G_p + G_q + G_r)  # batch x time x out
         alpha = torch.matmul(G, self.w[depth])  # batch x time
         alpha = alpha + self.match_b[depth].unsqueeze(0)  # batch x time
-        alpha = masked_softmax(alpha, mask_q, axis=-1, enable_cuda=self.enable_cuda)  # batch x time
+        alpha = masked_softmax(alpha, mask_q, axis=-1)  # batch x time
         alpha = alpha.unsqueeze(1)  # batch x 1 x time
         # batch x time x input_q, batch x 1 x time
         z = torch.bmm(alpha, input_q)  # batch x 1 x input_q
@@ -597,9 +600,9 @@ class StackedMatchLSTM(torch.nn.Module):
         self.highway_connections_x_x = torch.nn.ModuleList(highway_connections_x_x)
         self.highway_connections_h = torch.nn.ModuleList(highway_connections_h)
         for i in range(self.nlayers):
-            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
-            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=torch.nn.init.calculate_gain('relu'))
+            torch.nn.init.xavier_uniform(self.highway_connections_x[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_h[i].weight.data, gain=1)
+            torch.nn.init.xavier_uniform(self.highway_connections_x_x[i].weight.data, gain=1)
             self.highway_connections_x[i].bias.data.fill_(0)
             self.highway_connections_h[i].bias.data.fill_(0)
 
@@ -656,17 +659,25 @@ class StackedMatchLSTM(torch.nn.Module):
 
                 drop_input = self.attention_layer.forward(drop_input, input_mask, input_q, mask_q, h_tm1=dropped_previous_h, depth=d)
                 new_h, new_c = rnn.forward(drop_input, input_mask, previous_h, previous_c, dropped_previous_h)
+                state_stp[d].append((new_h, new_c))
 
-                if self.use_highway_connections:
+            if self.use_highway_connections:
+                for t in range(input_p.size(1)):
+                    input_mask = mask_p[:, t]
+                    if d == 0:
+                        # 0th layer
+                        curr_input = input_p[:, t]
+                    else:
+                        curr_input = state_stp[d - 1][t][0]
+                    new_h, new_c = state_stp[d][t]
                     gate_x = F.sigmoid(self.highway_connections_x[d].forward(curr_input))
                     gate_h = F.sigmoid(self.highway_connections_h[d].forward(curr_input))
                     new_h = self.highway_connections_x_x[d].forward(curr_input * gate_x) + gate_h * new_h  # batch x hid
                     new_h = new_h * input_mask.unsqueeze(1)
+                    state_stp[d][t] = (new_h, new_c)
 
-                state_stp[d].append((new_h, new_c))
-
-        states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
-        states = torch.cat(states, 1)  # batch x time x hid
+        states = [h[0] for h in state_stp[-1][1:]]  # list of batch x hid
+        states = torch.stack(states, 1)  # batch x time x hid
         return states, mask_p
 
 
@@ -772,17 +783,16 @@ class BiMatchLSTM(torch.nn.Module):
         # forward pass
         forward_states, _ = self.forward_rnn.forward(input_p, mask_p, input_q, mask_q)
         forward_last_state = forward_states[:, -1]  # batch x hid/2
-        forward_states = forward_states * mask_p.unsqueeze(-1)  # batch x time x hid/2
 
         # backward pass
         input_p_inverted = self.flip(input_p, flip_dim=1)  # batch x time x p_dim (backward)
         mask_p_inverted = self.flip(mask_p, flip_dim=1)  # batch x time (backward)
         backward_states, _ = self.backward_rnn.forward(input_p_inverted, mask_p_inverted, input_q, mask_q)
         backward_last_state = backward_states[:, -1]  # batch x hid/2
-        backward_states = backward_states * mask_p_inverted.unsqueeze(-1)  # batch x time x hid/2
         backward_states = self.flip(backward_states, flip_dim=1)  # batch x time x hid/2
 
         concat_states = torch.cat([forward_states, backward_states], -1)  # batch x time x hid
+        concat_states = concat_states * mask_p.unsqueeze(-1)  # batch x time x hid
         concat_last_state = torch.cat([forward_last_state, backward_last_state], -1)  # batch x hid
 
         return concat_states, concat_last_state, mask_p
@@ -809,12 +819,11 @@ class BoundaryDecoderAttention(torch.nn.Module):
         self.W_a = torch.nn.Linear(self.output_dim, self.output_dim)
         self.v = torch.nn.Parameter(torch.FloatTensor(self.output_dim))
         self.c = torch.nn.Parameter(torch.FloatTensor(1))
-        self._eps = 1e-6
         self.init_weights()
 
     def init_weights(self):
-        torch.nn.init.xavier_uniform(self.V.weight.data, gain=torch.nn.init.calculate_gain('relu'))
-        torch.nn.init.xavier_uniform(self.W_a.weight.data, gain=torch.nn.init.calculate_gain('relu'))
+        torch.nn.init.xavier_uniform(self.V.weight.data, gain=1)
+        torch.nn.init.xavier_uniform(self.W_a.weight.data, gain=1)
         self.V.bias.data.fill_(0)
         self.W_a.bias.data.fill_(0)
         torch.nn.init.normal(self.v.data, mean=0, std=0.05)
@@ -832,7 +841,7 @@ class BoundaryDecoderAttention(torch.nn.Module):
 
         beta = torch.matmul(Fk, self.v)  # batch x time
         beta = beta + self.c.unsqueeze(0)  # batch x time
-        beta = masked_softmax(beta, mask_r, axis=-1, enable_cuda=self.enable_cuda)  # batch x time
+        beta = masked_softmax(beta, mask_r, axis=-1)  # batch x time
         z = torch.bmm(beta.view(beta.size(0), 1, beta.size(1)), H_r)  # batch x 1 x inp
         z = z.view(z.size(0), -1)  # batch x inp
         return z, beta
@@ -873,8 +882,7 @@ class BoundaryDecoder(torch.nn.Module):
             beta_list.append(beta)
 
         # beta list: list of batch x time
-        res = [b.unsqueeze(2) for b in beta_list]  # list of batch x time x 1
-        res = torch.cat(res, 2)  # batch x time x 2
+        res = torch.stack(beta_list, 2)  # batch x time x 2
         res = res * x_mask.unsqueeze(2)  # batch x time x 2
         return res
 
@@ -982,4 +990,5 @@ class FastBiLSTM(torch.nn.Module):
                                   output.size(2)).type(output.data.type())
             output = torch.cat([output, torch.autograd.Variable(padding)], 1)
 
-        return output.contiguous(), last_state, mask
+        output = output.contiguous() * mask.unsqueeze(-1)
+        return output, last_state, mask
