@@ -96,7 +96,7 @@ def the_main_function(config_dir='config', update_dict=None):
     number_batch = (train_data['input_story'].shape[0] + batch_size - 1) // batch_size
     data_queue, _ = generator_queue(train_batch_generator, max_q_size=20)
     learning_rate = init_learning_rate
-    best_val_loss = None
+    best_val_f1 = None
     be_patient = 0
 
     try:
@@ -138,20 +138,29 @@ def the_main_function(config_dir='config', update_dict=None):
                                                     batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
             logger.info("epoch=%d, valid nll loss=%.5f, valid f1=%.5f, valid em=%.5f, lr=%.6f" % (epoch, val_nll_loss, val_f1, val_em, learning_rate))
             # Save the model if the validation loss is the best we've seen so far.
-            if not best_val_loss or val_nll_loss < best_val_loss:
+            if not best_val_f1 or val_f1 > best_val_f1:
                 with open(model_config['dataset']['model_save_path'], 'wb') as save_f:
                     torch.save(_model, save_f)
-                best_val_loss = val_nll_loss
+                best_val_f1 = val_f1
                 be_patient = 0
             else:
                 if epoch >= model_config['optimizer']['learning_rate_decay_from_this_epoch']:
-                    if be_patient < model_config['optimizer']['learning_rate_decay_patience']:
-                        be_patient += 1
-                    else:
-                        # Anneal the learning rate if no improvement has been seen in the validation dataset.
-                        learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
-                        for param_group in optimizer.param_groups:
-                            param_group['lr'] = learning_rate
+                    if be_patient >= model_config['optimizer']['learning_rate_decay_patience']:
+                        if learning_rate * model_config['optimizer']['learning_rate_decay_ratio'] > model_config['optimizer']['learning_rate_cut_lowerbound'] * model_config['optimizer']['learning_rate']:
+                            # Anneal the learning rate if no improvement has been seen in the validation dataset.
+                            logger.info('cutting learning rate from %.5f to %.5f' % (learning_rate, learning_rate * model_config['optimizer']['learning_rate_decay_ratio']))
+                            learning_rate *= model_config['optimizer']['learning_rate_decay_ratio']
+                            for param_group in optimizer.param_groups:
+                                param_group['lr'] = learning_rate
+                        else:
+                            logger.info('learning rate %.5f reached lower bound' % (learning_rate))
+                    be_patient += 1
+
+            test_f1, test_em, test_nll_loss = evaluate(model=_model, data=test_data, criterion=criterion,
+                                                       trim_function=squad_trim, char_level_func=add_char_level_stuff,
+                                                       word_id2word=word_vocab, char_word2id=char_word2id,
+                                                       batch_size=valid_batch_size, enable_cuda=model_config['scheduling']['enable_cuda'])
+            logger.info("test: nll loss=%.5f, f1=%.5f, em=%.5f" % (test_nll_loss, test_f1, test_em))
             logger.info("========================================================================\n")
 
     # At any point you can hit Ctrl + C to break out of training early.
@@ -164,6 +173,7 @@ def the_main_function(config_dir='config', update_dict=None):
         _model = torch.load(save_f)
 
     # Run on test data.
+    logger.info("loading best model------------------------------------------------------------------\n")
     test_f1, test_em, test_nll_loss = evaluate(model=_model, data=test_data, criterion=criterion,
                                                trim_function=squad_trim, char_level_func=add_char_level_stuff,
                                                word_id2word=word_vocab, char_word2id=char_word2id,

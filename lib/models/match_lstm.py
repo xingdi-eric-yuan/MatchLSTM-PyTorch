@@ -49,6 +49,7 @@ class MatchLSTMModel(torch.nn.Module):
         self.dropout_between_rnn_layers = config['dropout_between_rnn_layers']
         self.dropout_in_rnn_weights = config['dropout_in_rnn_weights']
         self.use_layernorm = config['use_layernorm']
+        self.use_highway_connections = config['use_highway_connections']
 
         # embedding config
         config = self.model_config['embedding']['word_level']
@@ -110,6 +111,7 @@ class MatchLSTMModel(torch.nn.Module):
                                           dropout_between_rnn_layers=self.dropout_between_rnn_layers,
                                           dropout_in_rnn_weights=self.dropout_in_rnn_weights,
                                           use_layernorm=self.use_layernorm,
+                                          use_highway_connections=self.use_highway_connections,
                                           enable_cuda=self.enable_cuda)
 
             self.char_encoder = TimeDistributedRNN(rnn=char_encoder_rnn)
@@ -127,6 +129,7 @@ class MatchLSTMModel(torch.nn.Module):
                                       dropout_between_rnn_layers=self.dropout_between_rnn_layers,
                                       dropout_in_rnn_weights=self.dropout_in_rnn_weights,
                                       use_layernorm=self.use_layernorm,
+                                      use_highway_connections=self.use_highway_connections,
                                       enable_cuda=self.enable_cuda)
 
         enc_output_size = self.rnn_hidden_size[-1] if self.enable_preproc_rnn else emb_output_size
@@ -135,6 +138,7 @@ class MatchLSTMModel(torch.nn.Module):
                                       dropout_between_rnn_layers=self.dropout_between_rnn_layers,
                                       dropout_in_rnn_weights=self.dropout_in_rnn_weights,
                                       use_layernorm=self.use_layernorm,
+                                      use_highway_connections=self.use_highway_connections,
                                       enable_cuda=self.enable_cuda)
 
         self.decoder_init_state_generator = torch.nn.Linear(self.match_lstm_hidden_size[-1], self.decoder_hidden_size)
