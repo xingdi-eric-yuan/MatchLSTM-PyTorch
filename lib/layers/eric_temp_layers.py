@@ -348,8 +348,8 @@ class StackedLSTM(torch.nn.Module):
                     new_h = new_h * input_mask.unsqueeze(1)
                     state_stp[d][t] = (new_h, new_c)
 
-        states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
-        states = torch.cat(states, 1)  # batch x time x hid
+        states = [h[0] for h in state_stp[-1][1:]]  # list of batch x hid
+        states = torch.stack(states, 1)  # batch x time x hid
         return states, mask
 
 
@@ -676,8 +676,8 @@ class StackedMatchLSTM(torch.nn.Module):
                     new_h = new_h * input_mask.unsqueeze(1)
                     state_stp[d][t] = (new_h, new_c)
 
-        states = [h[0].unsqueeze(1) for h in state_stp[-1][1:]]  # list of batch x 1 x hid
-        states = torch.cat(states, 1)  # batch x time x hid
+        states = [h[0] for h in state_stp[-1][1:]]  # list of batch x hid
+        states = torch.stack(states, 1)  # batch x time x hid
         return states, mask_p
 
 
@@ -819,7 +819,6 @@ class BoundaryDecoderAttention(torch.nn.Module):
         self.W_a = torch.nn.Linear(self.output_dim, self.output_dim)
         self.v = torch.nn.Parameter(torch.FloatTensor(self.output_dim))
         self.c = torch.nn.Parameter(torch.FloatTensor(1))
-        self._eps = 1e-6
         self.init_weights()
 
     def init_weights(self):
@@ -883,8 +882,7 @@ class BoundaryDecoder(torch.nn.Module):
             beta_list.append(beta)
 
         # beta list: list of batch x time
-        res = [b.unsqueeze(2) for b in beta_list]  # list of batch x time x 1
-        res = torch.cat(res, 2)  # batch x time x 2
+        res = torch.stack(beta_list, 2)  # batch x time x 2
         res = res * x_mask.unsqueeze(2)  # batch x time x 2
         return res
 
