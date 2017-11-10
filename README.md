@@ -18,15 +18,18 @@ An NLTK tokenized version of SQuAD dataset is included. Because the original tes
 ## Results
 * In the following experiments, 300d GloVe embeddings pretrained on 840B tokens are used.
 * The default using LSTM is not the pytorch built-in version, it is slower version but with layernorm (Ba et al., 2016) and dropout (Kingma et al., 2015) support. Enable `fast_rnn` to use the pytorch built-in LSTM, instead.
-* Character level embeddings helps a little bit, but makes it slower, to use char level embeddings, enable `char_level`.
+* Character level embedding doesn't seem to help in this specific model, and makes it slower, to use char level embeddings, enable `char_level`.
 * The following results are got from single Nvidia P40 GPUs. If you have less GPU memory, use smaller batch size.
 * Other things implemented but haven't done ablation test yet, like highway connection (Srivastava et al., 2015) between each layers. (TODO)
 
-| config | valid f1 | valid em | dev f1 | dev em |
-| --- | --- | --- | --- | --- |
-| default config | TODO | TODO | TODO | TODO |
-| enable fast_rnn | TODO | TODO | TODO | TODO |
-| enable char_level | TODO | TODO | TODO | TODO |
+<p align=center><img width="80%" src="valid_exp.png" /></p>
+
+| config | valid f1 | valid em | dev f1 | dev em | param amount |
+| --- | --- | --- | --- | --- | --- |
+| default config | **0.68593** | **0.53800** | **0.72709** | **0.61618** | 1950002 |
+| enable fast_rnn | 0.66019 | 0.51396 | 0.71294 | 0.59972 | 1945802 |
+| enable char_level(still running) | 0.66670 | 0.51764 | 0.71956 | 0.61107 | 2143922 |
+| enable char + fast | 0.66481 | 0.51900 | 0.71524 | 0.60416 | 2138826 |
 
 ## References
 * [SQuAD Paper][squad_paper_link]

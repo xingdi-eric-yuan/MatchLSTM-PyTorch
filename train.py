@@ -181,7 +181,7 @@ def the_main_function(config_dir='config', update_dict=None):
     logger.info("------------------------------------------------------------------------------------\n")
     logger.info("nll loss=%.5f, f1=%.5f, em=%.5f" % (test_nll_loss, test_f1, test_em))
 
-    return 0
+    return
 
 
 if __name__ == "__main__":
