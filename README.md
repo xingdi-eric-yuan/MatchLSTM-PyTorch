@@ -22,7 +22,7 @@ An NLTK tokenized version of SQuAD dataset is included. Because the original tes
 * The following results are got from single Nvidia P40 GPUs. If you have less GPU memory, use smaller batch size.
 * Other things implemented but haven't done ablation test yet, like highway connection (Srivastava et al., 2015) between each layers. (TODO)
 
-<p align=center><img width="30%" src="valid_exp.png" /></p>
+<p align=center><img width="100%" src="valid_exp.png" /></p>
 
 | config | valid f1 | valid em | dev f1 | dev em | param amount |
 | --- | --- | --- | --- | --- | --- |
