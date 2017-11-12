@@ -26,9 +26,9 @@ An NLTK tokenized version of SQuAD dataset is included. Because the original tes
 
 | config | valid f1 | valid em | dev f1 | dev em | param amount |
 | --- | --- | --- | --- | --- | --- |
-| default config | **0.68593** | **0.53800** | **0.72709** | **0.61618** | 1950002 |
+| default config | **0.68714** | **0.54033** | **0.73007** | **0.62091** | 1950002 |
 | enable fast_rnn | 0.66019 | 0.51396 | 0.71294 | 0.59972 | 1945802 |
-| enable char_level(still running) | 0.66670 | 0.51764 | 0.71956 | 0.61107 | 2143922 |
+| enable char_level(still running) | 0.7301 | 0.51764 | 0.72029 | 0.60747 | 2143922 |
 | enable char + fast | 0.66481 | 0.51900 | 0.71524 | 0.60416 | 2138826 |
 
 ## References
