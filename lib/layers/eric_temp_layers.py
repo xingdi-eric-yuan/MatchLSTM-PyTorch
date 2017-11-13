@@ -982,6 +982,7 @@ class FastBiLSTM(torch.nn.Module):
         last_state = pad_(last_state, n_zero)
 
         output = output.index_select(0, idx_unsort)
+        last_state = last_state.index_select(0, idx_unsort)
 
         # Pad up to original batch sequence length
         if output.size(1) != mask.size(1):
