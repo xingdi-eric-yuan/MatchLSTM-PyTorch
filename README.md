@@ -28,7 +28,7 @@ An NLTK tokenized version of SQuAD dataset is included. Because the original tes
 | --- | --- | --- | --- | --- | --- |
 | default config | **0.68714** | **0.54033** | **0.73007** | **0.62091** | 1950002 |
 | enable fast_rnn | 0.66019 | 0.51396 | 0.71294 | 0.59972 | 1945802 |
-| enable char_level(still running) | 0.66670 | 0.51764 | 0.71956 | 0.61107 | 2143922 |
+| enable char_level | 0.66670 | 0.51764 | 0.71956 | 0.61107 | 2143922 |
 | enable char + fast | 0.66481 | 0.51900 | 0.71524 | 0.60416 | 2138826 |
 
 ## References
@@ -37,6 +37,9 @@ An NLTK tokenized version of SQuAD dataset is included. Because the original tes
 * [Layernorm Paper][layer_norm_paper_link]
 * [Variational Dropout Paper][v_dropout_paper_link]
 * [Highway Networks Paper][highway_networks_paper_link]
+
+## Tips
+* Make the pretrained embedding h5 file to only contain the overlap words between GloVe and SQuAD, makes it much faster to load embeddings before training. 
 
 ## LICENSE
 [MIT][mit_license]
